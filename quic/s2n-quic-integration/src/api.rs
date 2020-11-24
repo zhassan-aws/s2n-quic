@@ -16,8 +16,8 @@ pub trait Connection {
 
 pub trait Acceptor: Sized {
     type ReceiveStream: ReceiveStream;
-    type BidiStream: SendStream + ReceiveStream;
-    type Error;
+    type BidiStream: BidiStream;
+    type Error: Error;
 
     fn poll_accept_bidi(
         &mut self,
@@ -32,8 +32,8 @@ pub trait Acceptor: Sized {
 
 pub trait Handle: Clone + Sized {
     type SendStream: SendStream;
-    type BidiStream: SendStream + ReceiveStream;
-    type Error;
+    type BidiStream: BidiStream;
+    type Error: Error;
 
     fn poll_open_send(&mut self, cx: &mut Context) -> Poll<Result<Self::SendStream, Self::Error>>;
 
@@ -67,7 +67,7 @@ open_future!(OpenSendFuture, SendStream, poll_open_send);
 open_future!(OpenBidiFuture, BidiStream, poll_open_bidi);
 
 pub trait SendStream: Sized {
-    type Error;
+    type Error: Error;
 
     fn send(&mut self, data: Bytes) -> SendFuture<Self> {
         SendFuture(self, data)
@@ -108,7 +108,7 @@ impl<'a, S: SendStream> Future for FinishFuture<'a, S> {
 }
 
 pub trait ReceiveStream: Sized {
-    type Error;
+    type Error: Error;
 
     fn receive(&mut self) -> ReceiveFuture<Self> {
         ReceiveFuture(self)
@@ -129,3 +129,14 @@ impl<'a, S: ReceiveStream> Future for ReceiveFuture<'a, S> {
         self.0.poll_receive(cx)
     }
 }
+
+pub trait BidiStream {
+    type SendStream: SendStream;
+    type ReceiveStream: ReceiveStream;
+
+    fn split(self) -> (Self::SendStream, Self::ReceiveStream);
+}
+
+pub trait Error: 'static + Send + Sync + std::error::Error {}
+
+impl<T: 'static + Send + Sync + std::error::Error> Error for T {}

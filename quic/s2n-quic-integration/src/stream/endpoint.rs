@@ -1,15 +1,17 @@
 use crate::{
     api,
-    stream::scenario::{Scenario, Streams},
+    rt::{delay, spawn},
+    stream::scenario::{self, Scenario},
 };
 use anyhow::Result;
+use bytes::Bytes;
 use core::future::Future;
 use std::sync::Arc;
 
 #[derive(Clone, Debug, PartialEq, PartialOrd, Eq, Ord)]
 pub struct Instructions {
-    pub client: Arc<Streams>,
-    pub server: Arc<Streams>,
+    pub client: Arc<scenario::Streams>,
+    pub server: Arc<scenario::Streams>,
 }
 
 impl Instructions {
@@ -86,8 +88,8 @@ endpoint!(Client, client, server);
 
 #[derive(Clone, Debug, PartialEq, PartialOrd, Eq, Ord)]
 struct Endpoint {
-    local: Arc<Streams>,
-    peer: Arc<Streams>,
+    local: Arc<scenario::Streams>,
+    peer: Arc<scenario::Streams>,
 }
 
 impl Endpoint {
@@ -98,22 +100,100 @@ impl Endpoint {
         let (handle, acceptor) = connection.split();
         let local = Self::local(&self.local, handle);
         let peer = Self::peer(&self.peer, acceptor);
-        async move { futures::try_join!(local, peer).map(|_| ()) }
+        async move {
+            // TODO check if we are allowed to have an error in this test
+            futures::try_join!(local, peer).map(|_| ())?;
+            Ok(())
+        }
     }
 
-    fn local<H: api::Handle>(
-        _streams: &Streams,
-        _handle: H,
+    fn local<H: 'static + api::Handle>(
+        streams: &Arc<scenario::Streams>,
+        handle: H,
     ) -> impl Future<Output = Result<()>> + 'static {
-        // TODO implement me
-        async { todo!() }
+        let mut uni_handles = vec![];
+        let mut bidi_handles = vec![];
+
+        for (id, scenario) in streams.uni_streams.iter() {
+            let mut handle = handle.clone();
+            let id = *id;
+            let scenario = *scenario;
+            uni_handles.push(async move {
+                delay(scenario.delay).await;
+                let stream = handle.open_send().await?;
+                Self::sender(stream, id, scenario.local).await?;
+                <Result<(), anyhow::Error>>::Ok(())
+            });
+        }
+
+        for (id, scenario) in streams.bidi_streams.iter() {
+            let mut handle = handle.clone();
+            let id = *id;
+            let scenario = *scenario;
+            bidi_handles.push(async move {
+                delay(scenario.delay).await;
+                let stream = handle.open_bidi().await?;
+                let (sender, receiver) = stream.split();
+                let sender = Self::sender(sender, id, scenario.local);
+                let receiver = Self::receiver(receiver, Bytes::new(), scenario.peer);
+                futures::try_join!(sender, receiver)?;
+                <Result<(), anyhow::Error>>::Ok(())
+            });
+        }
+
+        async {
+            let uni = futures::future::try_join_all(uni_handles);
+            let bidi = futures::future::try_join_all(bidi_handles);
+            futures::try_join!(uni, bidi)?;
+            Ok(())
+        }
     }
 
     fn peer<A: api::Acceptor>(
-        _streams: &Streams,
+        _streams: &Arc<scenario::Streams>,
         _acceptor: A,
     ) -> impl Future<Output = Result<()>> + 'static {
         // TODO implement me
         async { todo!() }
+    }
+
+    async fn sender<S: api::SendStream>(
+        mut stream: S,
+        id: u64,
+        scenario: scenario::Stream,
+    ) -> Result<()> {
+        // Write the scenario ID
+        let id = Bytes::copy_from_slice(&id.to_be_bytes());
+        stream.send(id).await?;
+
+        let mut sender = scenario.data;
+        let mut chunks = [bytes::Bytes::new()];
+
+        while sender.send(scenario.send_amount, &mut chunks).is_some() {
+            // TODO implement resets
+            stream
+                .send(core::mem::replace(&mut chunks[0], Bytes::new()))
+                .await?;
+        }
+
+        stream.finish().await?;
+
+        Ok(())
+    }
+
+    async fn receiver<S: api::ReceiveStream>(
+        mut stream: S,
+        prelude: Bytes,
+        scenario: scenario::Stream,
+    ) -> Result<()> {
+        let mut receiver = scenario.data;
+        receiver.receive(&[prelude]);
+
+        while let Some(chunk) = stream.receive().await? {
+            // TODO implement stop_sending
+            receiver.receive(&[chunk]);
+        }
+
+        Ok(())
     }
 }

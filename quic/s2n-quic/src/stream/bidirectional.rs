@@ -16,15 +16,13 @@ impl BidirectionalStream {
 
     impl_send_stream_api!(|stream, call| call!(stream.0));
 
-    impl_splittable_stream_api!(|_stream| {
-        todo!();
-    });
+    pub fn split(self) -> (crate::stream::ReceiveStream, crate::stream::SendStream) {
+        let (recv, send) = self.0.split();
+        (recv.into(), send.into())
+    }
 
     impl_connection_api!(|_stream| todo!());
 }
 
 impl_receive_stream_trait!(BidirectionalStream, |stream, call| call!(stream.0));
 impl_send_stream_trait!(BidirectionalStream, |stream, call| call!(stream.0));
-impl_splittable_stream_trait!(BidirectionalStream, |_stream| {
-    todo!();
-});

@@ -22,8 +22,11 @@ impl PeerStream {
     });
 
     impl_splittable_stream_api!(|stream| match stream {
-        PeerStream::Bidirectional(stream) => stream.split(),
-        PeerStream::Receive(stream) => stream.split(),
+        PeerStream::Bidirectional(stream) => {
+            let (recv, send) = stream.split();
+            (Some(recv), Some(send))
+        }
+        PeerStream::Receive(stream) => (Some(stream), None),
     });
 
     impl_connection_api!(|stream| match stream {

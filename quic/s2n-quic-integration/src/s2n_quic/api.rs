@@ -100,3 +100,12 @@ macro_rules! receive_stream {
 
 receive_stream!(ReceiveStream);
 receive_stream!(BidirectionalStream);
+
+impl api::BidiStream for stream::BidirectionalStream {
+    type SendStream = stream::SendStream;
+    type ReceiveStream = stream::ReceiveStream;
+
+    fn split(self) -> (Self::SendStream, Self::ReceiveStream) {
+        stream::BidirectionalStream::split(self)
+    }
+}

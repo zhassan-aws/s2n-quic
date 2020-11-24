@@ -9,9 +9,12 @@ publish = false
 [dependencies]
 anyhow = "1"
 arr_macro = "0.1"
+# bach = { git = "https://github.com/camshaft/bach", branch = "main" }
+bach = { path = "../../../../camshaft/bach/bach" }
 bytes = { version = "0.6", default-features = false }
 futures = "0.3"
 lazy_static = "1"
+quinn = { git = "https://github.com/quinn-rs/quinn.git", rev = "fc2016103dadb45158b3699a63e9046e4383ca63" }
 s2n-quic = { path = "../s2n-quic", features = ["std"] }
 s2n-quic-core = { path = "../s2n-quic-core", features = ["std"] }
 s2n-quic-platform = { path = "../s2n-quic-platform" }
