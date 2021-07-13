@@ -343,6 +343,8 @@ struct Instance<E> {
 
 impl<E: Endpoint> Instance<E> {
     async fn event_loop(self) -> io::Result<()> {
+        use crate::xdp::SocketState;
+
         let Self {
             clock,
             rx_socket,
@@ -355,12 +357,22 @@ impl<E: Endpoint> Instance<E> {
         cfg_if! {
             if #[cfg(any(s2n_quic_platform_socket_msg, s2n_quic_platform_socket_mmsg))] {
                 let rx_socket = tokio::io::unix::AsyncFd::new(rx_socket)?;
-                let tx_socket = tokio::io::unix::AsyncFd::new(tx_socket)?;
+                //let tx_socket = tokio::io::unix::AsyncFd::new(tx_socket)?;
             } else {
                 let rx_socket = async_fd_shim::AsyncFd::new(rx_socket)?;
-                let tx_socket = async_fd_shim::AsyncFd::new(tx_socket)?;
+                //let tx_socket = async_fd_shim::AsyncFd::new(tx_socket)?;
             }
         }
+
+        let interface = std::env::var("QNS_IF").unwrap_or_else(|_| "veth-adv03".to_string());
+
+        let SocketState {
+            tx,
+            rx: _,
+            mut umem,
+        } = SocketState::default(&interface, 0)?;
+        let mut tx_socket = tokio::io::unix::AsyncFd::new(tx)?;
+        // let rx_socket = tokio::io::unix::AsyncFd::new(rx)?;
 
         /// Even if there is no progress to be made, wake up the task at least once a second
         const DEFAULT_TIMEOUT: Duration = Duration::from_secs(1);
@@ -381,10 +393,10 @@ impl<E: Endpoint> Instance<E> {
             };
 
             // Poll for writablity if we have occupied slots available
-            let tx_interest = tx.occupied_len() > 0;
+            let tx_interest = tx_socket.get_ref().occupied_len() > 0;
             let tx_task = async {
                 if tx_interest {
-                    tx_socket.writable().await
+                    tx_socket.writable_mut().await
                 } else {
                     futures::future::pending().await
                 }
@@ -400,14 +412,14 @@ impl<E: Endpoint> Instance<E> {
 
             if let Ok((rx_result, tx_result, timeout_result)) = select.await {
                 if let Some(guard) = rx_result {
-                    if let Ok(result) = guard?.try_io(|socket| rx.rx(socket)) {
+                    if let Ok(result) = guard?.try_io(|socket| rx.rx(&rx_socket)) {
                         result?;
                     }
                     endpoint.receive(&mut rx.rx_queue(), clock.get_time());
                 }
 
                 if let Some(guard) = tx_result {
-                    if let Ok(result) = guard?.try_io(|socket| tx.tx(socket)) {
+                    if let Ok(result) = guard?.try_io(|socket| socket.get_mut().do_io()) {
                         result?;
                     }
                 }
@@ -421,7 +433,9 @@ impl<E: Endpoint> Instance<E> {
                 return Ok(());
             }
 
-            endpoint.transmit(&mut tx.tx_queue(), clock.get_time());
+            let mut tx_queue = tx_socket.get_mut().tx_queue(&mut umem);
+
+            endpoint.transmit(&mut tx_queue, clock.get_time());
 
             if let Some(delay) = endpoint.timeout() {
                 let delay = unsafe {

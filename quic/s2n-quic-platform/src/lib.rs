@@ -11,6 +11,9 @@ extern crate alloc;
 #[macro_use]
 mod macros;
 
+#[cfg(target_os = "linux")]
+pub mod xdp;
+
 pub mod buffer;
 pub mod io;
 pub mod message;
