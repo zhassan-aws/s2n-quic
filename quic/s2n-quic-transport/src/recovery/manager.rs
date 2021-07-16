@@ -670,7 +670,7 @@ impl Manager {
         let current_path_id = context.path_id();
         // Remove the lost packets and account for the bytes on the proper congestion controller
         for (packet_number, sent_info) in sent_packets_to_remove {
-            eprint!("! ");
+            // eprint!("! ");
             let path = context.path_mut_by_id(sent_info.path_id);
 
             self.sent_packets.remove(packet_number);

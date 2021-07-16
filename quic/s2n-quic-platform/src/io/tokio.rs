@@ -19,7 +19,7 @@ use s2n_quic_core::{
 };
 #[cfg(target_os = "linux")]
 use std::os::unix::io::AsRawFd;
-use std::{convert::TryInto, io, io::ErrorKind};
+use std::{convert::TryInto, ffi::CString, io, io::ErrorKind};
 use tokio::{net::UdpSocket, runtime::Handle, time::Instant};
 
 #[derive(Debug)]
@@ -365,14 +365,15 @@ impl<E: Endpoint> Instance<E> {
         }
 
         let interface = std::env::var("QNS_IF").unwrap_or_else(|_| "veth-adv03".to_string());
+        let interface = CString::new(interface).expect("invalid interface name");
 
-        let socket = SocketState::default(&interface, 0)?;
+        let socket = SocketState::new(&interface, 0)?;
         let mut socket = tokio::io::unix::AsyncFd::new(socket)?;
 
         /// Even if there is no progress to be made, wake up the task at least once a second
-        const DEFAULT_TIMEOUT: Duration = Duration::from_secs(1);
+        const MAX_TIMEOUT: Duration = Duration::from_secs(1);
 
-        let mut prev_time = Instant::now() + DEFAULT_TIMEOUT;
+        let mut prev_time = Instant::now() + MAX_TIMEOUT;
         let sleep = tokio::time::sleep_until(prev_time);
         tokio::pin!(sleep);
 
@@ -393,6 +394,7 @@ impl<E: Endpoint> Instance<E> {
             if let Ok((socket_result, timeout_result)) = select.await {
                 if socket_result.is_some() {
                     let mut rx_queue = socket.get_mut().rx_queue();
+                    use s2n_quic_core::io::rx::Queue;
                     if !rx_queue.is_empty() {
                         endpoint.receive(&mut rx_queue, clock.get_time());
                     }
@@ -407,8 +409,10 @@ impl<E: Endpoint> Instance<E> {
                 return Ok(());
             }
 
+            let now = clock.get_time();
+
             let mut tx_queue = socket.get_mut().tx_queue();
-            endpoint.transmit(&mut tx_queue, clock.get_time());
+            endpoint.transmit(&mut tx_queue, now);
 
             if let Some(delay) = endpoint.timeout() {
                 let delay = unsafe {
@@ -421,6 +425,9 @@ impl<E: Endpoint> Instance<E> {
 
                 // add the delay to the clock's epoch
                 let next_time = clock.0 + delay;
+                // wake up at least once every MAX_TIMEOUT
+                //let max_timeout = unsafe { clock.0 + now.as_duration() + MAX_TIMEOUT };
+                //let next_time = max_timeout.min(next_time);
 
                 // if the clock has changed let the sleep future know
                 if next_time != prev_time {
@@ -428,7 +435,7 @@ impl<E: Endpoint> Instance<E> {
                     prev_time = next_time;
                 }
             } else if reset_clock {
-                sleep.as_mut().reset(Instant::now() + DEFAULT_TIMEOUT);
+                sleep.as_mut().reset(Instant::now() + MAX_TIMEOUT);
             }
         }
     }
@@ -491,7 +498,6 @@ where
         let mut should_wake = *this.is_ready;
 
         if let Poll::Ready(wakeup) = this.wakeup.poll(cx) {
-            eprint!("W ");
             should_wake = true;
             if let Err(err) = wakeup {
                 return Poll::Ready(Err(err));
@@ -506,7 +512,6 @@ where
         let mut timeout_result = false;
 
         if this.sleep.poll(cx).is_ready() {
-            eprint!("S ");
             timeout_result = true;
             should_wake = true;
             // A ready from the sleep future should not yield, as it's unlikely that any of the
@@ -531,12 +536,12 @@ where
 }
 
 #[pin_project]
-struct SocketTask<'a, 'umem> {
+struct SocketTask<'a> {
     #[pin]
-    socket: &'a mut tokio::io::unix::AsyncFd<crate::xdp::SocketState<'umem>>,
+    socket: &'a mut tokio::io::unix::AsyncFd<crate::xdp::SocketState>,
 }
 
-impl<'a, 'umem> Future for SocketTask<'a, 'umem> {
+impl<'a> Future for SocketTask<'a> {
     type Output = std::io::Result<()>;
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
@@ -548,23 +553,23 @@ impl<'a, 'umem> Future for SocketTask<'a, 'umem> {
             if let Poll::Ready(guard) = socket.poll_read_ready_mut(cx) {
                 let mut guard = guard?;
 
-                if let Ok(result) = guard.try_io(|fd| fd.get_mut().rx.do_io()) {
+                if let Ok(result) = guard.try_io(|fd| fd.get_mut().poll_rx()) {
                     let _ = result?;
+                    eprint!("rx ");
                     outcome = Poll::Ready(Ok(()));
-                    eprint!("R ");
                 }
             }
         }
 
         // if anything is queued up, try to make progress
-        if socket.get_ref().should_poll_write() {
+        if let Err(err) = socket.get_mut().poll_tx() {
             if let Poll::Ready(guard) = socket.poll_write_ready_mut(cx) {
                 let mut guard = guard?;
 
-                if let Ok(result) = guard.try_io(|fd| fd.get_mut().tx.do_io()) {
+                if let Ok(result) = guard.try_io(|_| Err(err)) {
+                    eprint!("tx ");
                     let _ = result?;
                     outcome = Poll::Ready(Ok(()));
-                    eprint!("T ");
                 }
             }
         }
