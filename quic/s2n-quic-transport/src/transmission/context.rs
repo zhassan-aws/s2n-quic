@@ -3,12 +3,13 @@
 
 use crate::{contexts::WriteContext, endpoint, transmission, transmission::Mode};
 use core::marker::PhantomData;
-use s2n_codec::{Encoder, EncoderBuffer, EncoderValue};
+use s2n_codec::{DecoderBufferMut, Encoder, EncoderBuffer, EncoderValue};
 use s2n_quic_core::{
     frame::{
         ack_elicitation::{AckElicitable, AckElicitation},
         congestion_controlled::CongestionControlled,
         path_validation::Probing as PathValidationProbing,
+        FrameRef,
     },
     packet::number::PacketNumber,
     time::Timestamp,
@@ -85,7 +86,17 @@ impl<'a, 'b, Config: endpoint::Config> WriteContext for Context<'a, 'b, Config> 
             return None;
         }
 
+        let len = self.buffer.len();
         self.buffer.encode(frame);
+
+        /*
+        {
+            let frame = &mut self.buffer.as_mut_slice()[len..];
+            let buffer = DecoderBufferMut::new(frame);
+            eprintln!("TX {:?}", buffer.decode::<FrameRef>().unwrap().0);
+        }
+        */
+
         self.outcome.ack_elicitation |= frame.ack_elicitation();
         self.outcome.is_congestion_controlled |= frame.is_congestion_controlled();
 

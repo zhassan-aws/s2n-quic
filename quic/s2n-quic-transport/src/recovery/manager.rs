@@ -259,6 +259,8 @@ impl Manager {
         frame: frame::Ack<A>,
         context: &mut Ctx,
     ) -> Result<(), transport::Error> {
+        // eprint!("{} ", self.sent_packets.iter().count());
+
         let largest_acked_packet_number =
             self.space.new_packet_number(frame.largest_acknowledged());
         let mut newly_acked_packets =
@@ -668,6 +670,7 @@ impl Manager {
         let current_path_id = context.path_id();
         // Remove the lost packets and account for the bytes on the proper congestion controller
         for (packet_number, sent_info) in sent_packets_to_remove {
+            eprint!("! ");
             let path = context.path_mut_by_id(sent_info.path_id);
 
             self.sent_packets.remove(packet_number);

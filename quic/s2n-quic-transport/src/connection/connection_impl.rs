@@ -560,6 +560,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
                             .is_ok()
                     {
                         count += 1;
+
                         publisher.on_packet_sent(event::builders::PacketSent {
                             packet_header: event::builders::PacketHeader {
                                 packet_type: outcome.packet_number.space().into(),

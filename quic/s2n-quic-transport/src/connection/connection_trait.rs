@@ -295,6 +295,7 @@ pub trait ConnectionTrait: Sized {
                 if datagram.destination_connection_id.as_bytes()
                     != packet.destination_connection_id()
                 {
+                    dbg!("conn id mismatch");
                     break;
                 }
 
@@ -308,6 +309,7 @@ pub trait ConnectionTrait: Sized {
                 );
 
                 if let Err(ProcessingError::ConnectionError(err)) = result {
+                    dbg!("packet decryption");
                     // CryptoErrors returned as a result of a packet failing decryption will be
                     // silently discarded, but this method could return an error on protocol
                     // violations which would result in shutting down the connection anyway. In this
@@ -327,6 +329,7 @@ pub trait ConnectionTrait: Sized {
 
                 // we choose to discard the rest of the datagram on parsing errors since it would
                 // be difficult to recover from an invalid packet.
+                dbg!("fatal packet");
                 break;
             }
         }

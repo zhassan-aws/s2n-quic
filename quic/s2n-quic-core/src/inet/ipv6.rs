@@ -77,6 +77,18 @@ impl Unspecified for IpV6Address {
     }
 }
 
+impl From<[u8; IPV6_LEN]> for IpV6Address {
+    fn from(octets: [u8; IPV6_LEN]) -> Self {
+        Self { octets }
+    }
+}
+
+impl From<IpV6Address> for [u8; IPV6_LEN] {
+    fn from(v: IpV6Address) -> Self {
+        v.octets
+    }
+}
+
 test_inet_snapshot!(ipv6, ipv6_snapshot_test, IpV6Address);
 
 define_inet_type!(
@@ -118,19 +130,16 @@ impl Unspecified for SocketAddressV6 {
     }
 }
 
+impl From<(IpV6Address, u16)> for SocketAddressV6 {
+    fn from((ip, port): (IpV6Address, u16)) -> Self {
+        Self {
+            ip,
+            port: port.into(),
+        }
+    }
+}
+
 test_inet_snapshot!(socket_v6, socket_v6_snapshot_test, SocketAddressV6);
-
-impl From<[u8; IPV6_LEN]> for IpV6Address {
-    fn from(octets: [u8; IPV6_LEN]) -> Self {
-        Self { octets }
-    }
-}
-
-impl From<IpV6Address> for [u8; IPV6_LEN] {
-    fn from(v: IpV6Address) -> Self {
-        v.octets
-    }
-}
 
 #[cfg(any(test, feature = "std"))]
 mod std_conversion {

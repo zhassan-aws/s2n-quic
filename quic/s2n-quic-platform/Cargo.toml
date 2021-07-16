@@ -31,9 +31,14 @@ libc = "0.2"
 [target.'cfg(target_os = "linux")'.dependencies]
 bitflags = "1.2"
 libbpf-sys = "0.4.0-2"
+libbpf-rs = "0.11"
+pcap-file = "1"
 xsk-rs = "0.2"
 
 [dev-dependencies]
 bolero = "0.6"
 s2n-quic-core = { version = "0.1.0", path = "../s2n-quic-core", features = ["testing"] }
 tokio = { version = "1", features = ["full"] }
+
+[target.'cfg(target_os = "linux")'.build-dependencies]
+libbpf-cargo = "0.7"

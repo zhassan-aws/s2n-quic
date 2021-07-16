@@ -1,7 +1,13 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use std::{fs::read_dir, io::Error, path::Path, process::Command};
+use libbpf_cargo::SkeletonBuilder;
+use std::{
+    fs::{create_dir_all, read_dir},
+    io::Error,
+    path::Path,
+    process::Command,
+};
 
 fn main() -> Result<(), Error> {
     let env = Env::new();
@@ -17,6 +23,21 @@ fn main() -> Result<(), Error> {
                 );
             }
         }
+    }
+
+    {
+        const SRC: &str = "./src/xdp/kern.bpf.c";
+        create_dir_all("./src/xdp/.output").unwrap();
+        let skel = Path::new("./src/xdp/.output/kern.skel.rs");
+        let path = "../../../../xdp-project/xdp-tutorial/basic01-xdp-pass/xdp_pass_kern.o";
+        libbpf_cargo::gen::gen_single(
+            false,
+            Path::new(path),
+            libbpf_cargo::gen::OutputDest::File(skel),
+            None,
+        )
+        .unwrap();
+        println!("cargo:rerun-if-changed={}", path);
     }
 
     Ok(())

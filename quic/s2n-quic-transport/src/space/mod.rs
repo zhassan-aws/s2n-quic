@@ -529,6 +529,8 @@ pub trait PacketSpace<Config: endpoint::Config> {
                 .map_err(transport::Error::from)?;
             is_path_validation_probing |= frame.path_validation();
 
+            // eprintln!("RX {:?}", frame);
+
             match frame {
                 Frame::Padding(frame) => {
                     //= https://tools.ietf.org/id/draft-ietf-quic-transport-32.txt#19.1

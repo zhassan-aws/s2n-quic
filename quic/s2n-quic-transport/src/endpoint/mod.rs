@@ -87,15 +87,11 @@ impl<Cfg: Config> s2n_quic_core::endpoint::Endpoint for Endpoint<Cfg> {
     fn receive<Rx: rx::Queue>(&mut self, queue: &mut Rx, timestamp: Timestamp) {
         use rx::Entry;
 
-        let entries = queue.as_slice_mut();
-
-        for entry in entries.iter_mut() {
+        while let Some(mut entry) = queue.pop() {
             if let Some(remote_address) = entry.remote_address() {
                 self.receive_datagram(remote_address, entry.ecn(), entry.payload_mut(), timestamp)
             }
         }
-        let len = entries.len();
-        queue.finish(len);
     }
 
     fn transmit<Tx: tx::Queue>(&mut self, queue: &mut Tx, timestamp: Timestamp) {

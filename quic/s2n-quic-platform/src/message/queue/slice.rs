@@ -89,17 +89,12 @@ impl<'a, Message, R> DerefMut for Slice<'a, Message, R> {
 impl<'a, Message: rx::Entry + message::Message, B: Behavior> rx::Queue for Slice<'a, Message, B> {
     type Entry = Message;
 
-    fn as_slice_mut(&mut self) -> &mut [Message] {
-        let range = self.primary.range();
-        &mut self.messages[range]
-    }
-
     fn len(&self) -> usize {
         self.primary.len
     }
 
-    fn finish(&mut self, count: usize) {
-        self.advance(count)
+    fn pop(&mut self) -> Option<Self::Entry> {
+        todo!()
     }
 }
 

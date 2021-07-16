@@ -92,7 +92,11 @@ type BytesInFlight = Counter<u32>;
 
 impl CongestionController for CubicCongestionController {
     fn congestion_window(&self) -> u32 {
+        //if self.bytes_in_flight > self.max_datagram_size as u32 * 1 {
+        //    0
+        //} else {
         self.congestion_window as u32
+        //}
     }
 
     fn is_congestion_limited(&self) -> bool {

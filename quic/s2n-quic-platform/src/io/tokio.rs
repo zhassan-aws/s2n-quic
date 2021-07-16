@@ -356,23 +356,18 @@ impl<E: Endpoint> Instance<E> {
 
         cfg_if! {
             if #[cfg(any(s2n_quic_platform_socket_msg, s2n_quic_platform_socket_mmsg))] {
-                let rx_socket = tokio::io::unix::AsyncFd::new(rx_socket)?;
+                //let rx_socket = tokio::io::unix::AsyncFd::new(rx_socket)?;
                 //let tx_socket = tokio::io::unix::AsyncFd::new(tx_socket)?;
             } else {
-                let rx_socket = async_fd_shim::AsyncFd::new(rx_socket)?;
+                //let rx_socket = async_fd_shim::AsyncFd::new(rx_socket)?;
                 //let tx_socket = async_fd_shim::AsyncFd::new(tx_socket)?;
             }
         }
 
         let interface = std::env::var("QNS_IF").unwrap_or_else(|_| "veth-adv03".to_string());
 
-        let SocketState {
-            tx,
-            rx: _,
-            mut umem,
-        } = SocketState::default(&interface, 0)?;
-        let mut tx_socket = tokio::io::unix::AsyncFd::new(tx)?;
-        // let rx_socket = tokio::io::unix::AsyncFd::new(rx)?;
+        let socket = SocketState::default(&interface, 0)?;
+        let mut socket = tokio::io::unix::AsyncFd::new(socket)?;
 
         /// Even if there is no progress to be made, wake up the task at least once a second
         const DEFAULT_TIMEOUT: Duration = Duration::from_secs(1);
@@ -382,45 +377,24 @@ impl<E: Endpoint> Instance<E> {
         tokio::pin!(sleep);
 
         loop {
-            // Poll for readability if we have free slots available
-            let rx_interest = rx.free_len() > 0;
-            let rx_task = async {
-                if rx_interest {
-                    rx_socket.readable().await
-                } else {
-                    futures::future::pending().await
-                }
-            };
-
-            // Poll for writablity if we have occupied slots available
-            let tx_interest = tx_socket.get_ref().occupied_len() > 0;
-            let tx_task = async {
-                if tx_interest {
-                    tx_socket.writable_mut().await
-                } else {
-                    futures::future::pending().await
-                }
+            // Poll for socket changes
+            let socket_task = SocketTask {
+                socket: &mut socket,
             };
 
             let wakeups = endpoint.wakeups(clock.get_time());
             // pin the wakeups future so we don't have to move it into the Select future.
             tokio::pin!(wakeups);
 
-            let select = Select::new(rx_task, tx_task, &mut wakeups, &mut sleep);
+            let select = Select::new(socket_task, &mut wakeups, &mut sleep);
 
             let mut reset_clock = false;
 
-            if let Ok((rx_result, tx_result, timeout_result)) = select.await {
-                if let Some(guard) = rx_result {
-                    if let Ok(result) = guard?.try_io(|socket| rx.rx(&rx_socket)) {
-                        result?;
-                    }
-                    endpoint.receive(&mut rx.rx_queue(), clock.get_time());
-                }
-
-                if let Some(guard) = tx_result {
-                    if let Ok(result) = guard?.try_io(|socket| socket.get_mut().do_io()) {
-                        result?;
+            if let Ok((socket_result, timeout_result)) = select.await {
+                if socket_result.is_some() {
+                    let mut rx_queue = socket.get_mut().rx_queue();
+                    if !rx_queue.is_empty() {
+                        endpoint.receive(&mut rx_queue, clock.get_time());
                     }
                 }
 
@@ -433,8 +407,7 @@ impl<E: Endpoint> Instance<E> {
                 return Ok(());
             }
 
-            let mut tx_queue = tx_socket.get_mut().tx_queue(&mut umem);
-
+            let mut tx_queue = socket.get_mut().tx_queue();
             endpoint.transmit(&mut tx_queue, clock.get_time());
 
             if let Some(delay) = endpoint.timeout() {
@@ -467,19 +440,15 @@ impl<E: Endpoint> Instance<E> {
 /// after completing any of the sub-tasks. This is especially important when the TX queue is
 /// flushed quickly and we never get notified of the RX socket having packets to read.
 #[pin_project]
-struct Select<Rx, Tx, Wakeup, Sleep>
+struct Select<Socket, Wakeup, Sleep>
 where
-    Rx: Future,
-    Tx: Future,
+    Socket: Future,
     Wakeup: Future,
     Sleep: Future,
 {
     #[pin]
-    rx: Fuse<Rx>,
-    rx_out: Option<Rx::Output>,
-    #[pin]
-    tx: Fuse<Tx>,
-    tx_out: Option<Tx::Output>,
+    socket: Fuse<Socket>,
+    socket_out: Option<Socket::Output>,
     #[pin]
     wakeup: Fuse<Wakeup>,
     #[pin]
@@ -487,20 +456,18 @@ where
     is_ready: bool,
 }
 
-impl<Rx, Tx, Wakeup, Sleep> Select<Rx, Tx, Wakeup, Sleep>
+impl<Socket, Wakeup, Sleep> Select<Socket, Wakeup, Sleep>
 where
-    Rx: Future,
-    Tx: Future,
+    Socket: Future,
+
     Wakeup: Future,
     Sleep: Future,
 {
     #[inline(always)]
-    fn new(rx: Rx, tx: Tx, wakeup: Wakeup, sleep: Sleep) -> Self {
+    fn new(rx: Socket, wakeup: Wakeup, sleep: Sleep) -> Self {
         Self {
-            rx: rx.fuse(),
-            rx_out: None,
-            tx: tx.fuse(),
-            tx_out: None,
+            socket: rx.fuse(),
+            socket_out: None,
             wakeup: wakeup.fuse(),
             sleep,
             is_ready: false,
@@ -508,16 +475,15 @@ where
     }
 }
 
-type SelectResult<Rx, Tx> = Result<(Option<Rx>, Option<Tx>, bool), CloseError>;
+type SelectResult<S> = Result<(Option<S>, bool), CloseError>;
 
-impl<Rx, Tx, Wakeup, Sleep> Future for Select<Rx, Tx, Wakeup, Sleep>
+impl<Socket, Wakeup, Sleep> Future for Select<Socket, Wakeup, Sleep>
 where
-    Rx: Future,
-    Tx: Future,
+    Socket: Future,
     Wakeup: Future<Output = Result<usize, CloseError>>,
     Sleep: Future,
 {
-    type Output = SelectResult<Rx::Output, Tx::Output>;
+    type Output = SelectResult<Socket::Output>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let this = self.project();
@@ -525,25 +491,22 @@ where
         let mut should_wake = *this.is_ready;
 
         if let Poll::Ready(wakeup) = this.wakeup.poll(cx) {
+            eprint!("W ");
             should_wake = true;
             if let Err(err) = wakeup {
                 return Poll::Ready(Err(err));
             }
         }
 
-        if let Poll::Ready(v) = this.rx.poll(cx) {
+        if let Poll::Ready(v) = this.socket.poll(cx) {
             should_wake = true;
-            *this.rx_out = Some(v);
-        }
-
-        if let Poll::Ready(v) = this.tx.poll(cx) {
-            should_wake = true;
-            *this.tx_out = Some(v);
+            *this.socket_out = Some(v);
         }
 
         let mut timeout_result = false;
 
         if this.sleep.poll(cx).is_ready() {
+            eprint!("S ");
             timeout_result = true;
             should_wake = true;
             // A ready from the sleep future should not yield, as it's unlikely that any of the
@@ -557,13 +520,56 @@ where
         }
 
         if core::mem::replace(this.is_ready, true) {
-            Poll::Ready(Ok((this.rx_out.take(), this.tx_out.take(), timeout_result)))
+            Poll::Ready(Ok((this.socket_out.take(), timeout_result)))
         } else {
             // yield once so the other futures have the chance to wake up
             // before returning
             cx.waker().wake_by_ref();
             Poll::Pending
         }
+    }
+}
+
+#[pin_project]
+struct SocketTask<'a, 'umem> {
+    #[pin]
+    socket: &'a mut tokio::io::unix::AsyncFd<crate::xdp::SocketState<'umem>>,
+}
+
+impl<'a, 'umem> Future for SocketTask<'a, 'umem> {
+    type Output = std::io::Result<()>;
+
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        let socket = &mut self.socket;
+
+        let mut outcome = Poll::Pending;
+
+        if socket.get_ref().should_poll_read() {
+            if let Poll::Ready(guard) = socket.poll_read_ready_mut(cx) {
+                let mut guard = guard?;
+
+                if let Ok(result) = guard.try_io(|fd| fd.get_mut().rx.do_io()) {
+                    let _ = result?;
+                    outcome = Poll::Ready(Ok(()));
+                    eprint!("R ");
+                }
+            }
+        }
+
+        // if anything is queued up, try to make progress
+        if socket.get_ref().should_poll_write() {
+            if let Poll::Ready(guard) = socket.poll_write_ready_mut(cx) {
+                let mut guard = guard?;
+
+                if let Ok(result) = guard.try_io(|fd| fd.get_mut().tx.do_io()) {
+                    let _ = result?;
+                    outcome = Poll::Ready(Ok(()));
+                    eprint!("T ");
+                }
+            }
+        }
+
+        outcome
     }
 }
 

@@ -124,6 +124,18 @@ impl Unspecified for SocketAddress {
     }
 }
 
+impl From<(IpV4Address, u16)> for SocketAddress {
+    fn from(addr: (IpV4Address, u16)) -> Self {
+        SocketAddress::IpV4(addr.into())
+    }
+}
+
+impl From<(IpV6Address, u16)> for SocketAddress {
+    fn from(addr: (IpV6Address, u16)) -> Self {
+        SocketAddress::IpV6(addr.into())
+    }
+}
+
 impl From<SocketAddressV4> for SocketAddress {
     fn from(addr: SocketAddressV4) -> Self {
         SocketAddress::IpV4(addr)

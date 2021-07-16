@@ -18,3 +18,4 @@ incremental = false
 
 [patch.crates-io]
 xsk-rs = { path = "../../camshaft/xsk-rs" }
+libbpf-cargo = { path = "../../libbpf/libbpf-rs/libbpf-cargo" }
