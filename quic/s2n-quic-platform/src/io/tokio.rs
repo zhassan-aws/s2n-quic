@@ -14,6 +14,7 @@ use pin_project::pin_project;
 use s2n_quic_core::{
     endpoint::{CloseError, Endpoint},
     inet::SocketAddress,
+    io::tx::Queue,
     path::MaxMtu,
     time::{self, Clock as ClockTrait},
 };
@@ -377,12 +378,41 @@ impl<E: Endpoint> Instance<E> {
         let sleep = tokio::time::sleep_until(prev_time);
         tokio::pin!(sleep);
 
+        let mut packets = std::collections::VecDeque::new();
+
         loop {
             // Poll for socket changes
             let socket_task = SocketTask {
                 socket: &mut socket,
             };
 
+            socket_task.await?;
+
+            {
+                let mut rx_queue = socket.get_mut().rx_queue();
+                use s2n_quic_core::io::rx::{Entry as _, Queue as _};
+                while let Some(msg) = rx_queue.pop() {
+                    if let Some(addr) = msg.remote_address() {
+                        let payload = msg.payload();
+                        if !payload.is_empty() {
+                            packets.push_back((addr, payload.to_vec()));
+                        }
+                    }
+                }
+            }
+
+            let mut tx_queue = socket.get_mut().tx_queue();
+            'next: loop {
+                if let Some((addr, payload)) = packets.front() {
+                    if tx_queue.push((*addr, payload)).is_ok() {
+                        let _ = packets.pop_front();
+                    }
+                } else {
+                    break 'next;
+                }
+            }
+
+            /*
             let wakeups = endpoint.wakeups(clock.get_time());
             // pin the wakeups future so we don't have to move it into the Select future.
             tokio::pin!(wakeups);
@@ -437,6 +467,7 @@ impl<E: Endpoint> Instance<E> {
             } else if reset_clock {
                 sleep.as_mut().reset(Instant::now() + MAX_TIMEOUT);
             }
+            */
         }
     }
 }
@@ -547,34 +578,39 @@ impl<'a> Future for SocketTask<'a> {
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let socket = &mut self.socket;
 
-        let mut outcome = Poll::Pending;
+        let rx_wake = socket.get_mut().poll_rx();
+        if let Poll::Ready(guard) = socket.poll_read_ready_mut(cx) {
+            let mut guard = guard?;
 
-        if socket.get_ref().should_poll_read() {
-            if let Poll::Ready(guard) = socket.poll_read_ready_mut(cx) {
-                let mut guard = guard?;
-
-                if let Ok(result) = guard.try_io(|fd| fd.get_mut().poll_rx()) {
-                    let _ = result?;
-                    eprint!("rx ");
-                    outcome = Poll::Ready(Ok(()));
-                }
+            // clear ready status if we have spare capacity
+            if matches!(rx_wake, Poll::Pending | Poll::Ready(true)) {
+                guard.clear_ready();
             }
         }
 
-        // if anything is queued up, try to make progress
-        if let Err(err) = socket.get_mut().poll_tx() {
+        let mut tx_wake = false;
+
+        use crate::xdp::TxPoll;
+        if socket.get_ref().should_poll_tx() {
             if let Poll::Ready(guard) = socket.poll_write_ready_mut(cx) {
                 let mut guard = guard?;
-
-                if let Ok(result) = guard.try_io(|_| Err(err)) {
-                    eprint!("tx ");
-                    let _ = result?;
-                    outcome = Poll::Ready(Ok(()));
+                match guard.get_inner_mut().poll_tx() {
+                    TxPoll::Empty => {
+                        // all done - nothing left to transmit
+                    }
+                    TxPoll::Poll { should_wake } => {
+                        tx_wake = should_wake;
+                        guard.clear_ready();
+                    }
                 }
             }
         }
 
-        outcome
+        if rx_wake.is_ready() || tx_wake {
+            Poll::Ready(Ok(()))
+        } else {
+            Poll::Pending
+        }
     }
 }
 

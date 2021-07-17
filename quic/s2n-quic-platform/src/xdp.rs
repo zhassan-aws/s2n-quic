@@ -2,6 +2,7 @@ use core::{
     convert::{TryFrom, TryInto},
     num::NonZeroU32,
     ops::Range,
+    task::Poll,
 };
 use s2n_codec::{DecoderBufferMut, DecoderError, Encoder, EncoderBuffer};
 use s2n_quic_core::{
@@ -20,6 +21,7 @@ mod bpf {
 }
 
 mod af_xdp;
+pub use af_xdp::TxPoll;
 
 // Put umem at bottom so drop order is correct
 pub struct SocketState {
@@ -68,20 +70,16 @@ impl SocketState {
         RxQueue(self.socket.rx_queue())
     }
 
-    pub fn should_poll_read(&self) -> bool {
-        self.socket.should_poll_rx()
-    }
-
-    pub fn should_poll_write(&self) -> bool {
-        self.socket.should_poll_tx()
-    }
-
-    pub fn poll_rx(&mut self) -> io::Result<()> {
+    pub fn poll_rx(&mut self) -> Poll<bool> {
         self.socket.poll_rx()
     }
 
-    pub fn poll_tx(&mut self) -> io::Result<()> {
+    pub fn poll_tx(&mut self) -> af_xdp::TxPoll {
         self.socket.poll_tx()
+    }
+
+    pub fn should_poll_tx(&self) -> bool {
+        self.socket.should_poll_tx()
     }
 }
 
@@ -115,7 +113,11 @@ impl<'a> rx::Queue for RxQueue<'a> {
     }
 
     fn len(&self) -> usize {
-        self.0.len()
+        todo!()
+    }
+
+    fn is_empty(&self) -> bool {
+        self.0.is_empty()
     }
 }
 
@@ -256,12 +258,19 @@ impl<'a> tx::Queue for TxQueue<'a> {
     }
 
     fn capacity(&self) -> usize {
-        // TODO
-        1
+        todo!()
+    }
+
+    fn has_capacity(&self) -> bool {
+        todo!()
     }
 
     fn len(&self) -> usize {
-        self.0.len()
+        todo!()
+    }
+
+    fn is_empty(&self) -> bool {
+        self.0.is_empty()
     }
 }
 

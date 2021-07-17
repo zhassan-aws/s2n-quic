@@ -1,4 +1,4 @@
-use core::fmt;
+use core::{fmt, task::Poll};
 use libbpf_sys::*;
 use libc::{MAP_ANONYMOUS, MAP_FAILED, MAP_HUGETLB, MAP_PRIVATE, PROT_READ, PROT_WRITE};
 use s2n_quic_core::{
@@ -25,8 +25,8 @@ impl Default for Tuning {
         Self {
             rx_batch_size: u32::MAX,
             rx_fill_size: 1024,
-            tx_batch_size: 128,
-            tx_mtu: 1500,
+            tx_batch_size: u32::MAX,
+            tx_mtu: 1550,
         }
     }
 }
@@ -40,10 +40,11 @@ pub struct Socket {
     tx_frames: FrameQueue,
     rx_frames: FrameQueue,
 
-    outstanding_rx: Outstanding,
+    next_rx_index: Option<u32>,
     outstanding_tx: u64,
     tx_reservation: Option<*mut xdp_desc>,
-    should_poll_tx: bool,
+    tx_at_capacity: bool,
+    tx_poll_state: TxPoll,
 
     tuning: Tuning,
     stats: Stats,
@@ -82,7 +83,7 @@ struct StatDir {
     pending_packets: usize,
     packets: usize,
     bytes: usize,
-    blocks: usize,
+    polls: usize,
     free_frames: f32,
     outstanding: usize,
 }
@@ -94,7 +95,7 @@ impl StatDir {
         col!(f, "packets")?;
         col!(f, "pdiff")?;
         col!(f, "bytes")?;
-        col!(f, "blocks")?;
+        col!(f, "polls")?;
         col!(f, "free frms")?;
         col!(f, "dfree")?;
         col!(f, "total")?;
@@ -109,7 +110,7 @@ impl fmt::Display for StatDir {
         col!(f, self.packets)?;
         col!(f, self.pending_packets - self.packets)?;
         col!(f, self.bytes)?;
-        col!(f, self.blocks)?;
+        col!(f, self.polls)?;
         col!(f, format_args!("{:9}%", self.free_frames as u32))?;
         col!(f, self.double_free)?;
         col!(f, self.pending_packets - self.packets + self.double_free)?;
@@ -122,14 +123,14 @@ impl Socket {
     pub fn new(if_name: &CStr, queue_id: u32) -> io::Result<Self> {
         let frame_count = std::env::var("FRAME_COUNT")
             .map(|v| v.parse().unwrap())
-            .unwrap_or(1024 * 4);
+            .unwrap_or((XSK_RING_PROD__DEFAULT_NUM_DESCS * 8) as usize);
         let rx_size = XSK_RING_CONS__DEFAULT_NUM_DESCS;
         let tx_size = XSK_RING_PROD__DEFAULT_NUM_DESCS;
         let fill_size = XSK_RING_PROD__DEFAULT_NUM_DESCS * 2;
         let comp_size = XSK_RING_CONS__DEFAULT_NUM_DESCS;
         let frame_size = XSK_UMEM__DEFAULT_FRAME_SIZE;
         let frame_headroom = XSK_UMEM__DEFAULT_FRAME_HEADROOM;
-        let xdp_flags = XDP_FLAGS_SKB_MODE;
+        let xdp_flags = XDP_FLAGS_HW_MODE | XDP_FLAGS_DRV_MODE;
         let bind_flags = XDP_USE_NEED_WAKEUP as _;
         let libbpf_flags = XSK_LIBBPF_FLAGS__INHIBIT_PROG_LOAD;
 
@@ -187,177 +188,96 @@ impl Socket {
             xsk,
             tx_frames,
             rx_frames,
-            outstanding_rx: Default::default(),
+            next_rx_index: None,
             outstanding_tx: 0,
             tx_reservation: None,
-            should_poll_tx: false,
+            tx_at_capacity: false,
+            tx_poll_state: TxPoll::Empty,
             tuning,
             stats: Stats::default(),
         };
 
         // Fill the socket up so it can start receiving packets
-        while socket.umem.device_fill(&mut socket.rx_frames) == 0 {
-            eprint!(".");
-        }
+        socket.umem.device_fill(&mut socket.rx_frames);
         socket.stats.rx.pending_packets += socket.rx_frames.len();
 
         Ok(socket)
     }
 
     pub fn rx_queue(&mut self) -> RxQueue {
-        let initial_len = self.outstanding_rx.len;
         RxQueue {
-            initial_len,
+            consumed_len: 0,
             socket: self,
         }
     }
 
     pub fn tx_queue(&mut self) -> TxQueue {
-        self.print_stats();
+        if std::env::var("PRINT_STATS").is_ok() {
+            self.print_stats();
+        }
         TxQueue {
             transmitted_len: 0,
             socket: self,
         }
     }
 
-    pub fn should_poll_rx(&self) -> bool {
-        // TODO make sure the rx queue has space?
-        true
+    pub fn poll_rx(&mut self) -> Poll<bool> {
+        // check to see if we have any available packets to ready
+        if self.next_rx_index.is_none() {
+            self.next_rx_index = self.pop_rx_index();
+        }
+
+        // notify the caller to poll if we have available capacity in the frames
+        if self.next_rx_index.is_none() {
+            self.stats.rx.polls += 1;
+            Poll::Pending
+        } else {
+            Poll::Ready(self.rx_frames.has_capacity())
+        }
     }
 
-    pub fn poll_rx(&mut self) -> io::Result<()> {
-        let mut idx = 0;
-        let recv_len =
-            unsafe { _xsk_ring_cons__peek(&mut self.rx, self.tuning.rx_batch_size as _, &mut idx) };
+    fn pop_rx_index(&mut self) -> Option<u32> {
+        let mut recv_idx = 0;
+        let has_item = unsafe { _xsk_ring_cons__peek(&mut self.rx, 1, &mut recv_idx) };
 
-        self.stats.rx.pending_packets += self.umem.device_fill(&mut self.rx_frames) as usize;
-
-        if self.outstanding_rx.len == 0 {
-            self.outstanding_rx.index = idx;
+        if has_item == 1 {
+            Some(recv_idx)
+        } else {
+            None
         }
-        self.outstanding_rx.len += recv_len as u32;
-
-        if recv_len == 0 {
-            self.stats.rx.blocks += 1;
-            return Err(io::Error::from_raw_os_error(libc::EWOULDBLOCK));
-        }
-
-        Ok(())
     }
 
     pub fn should_poll_tx(&self) -> bool {
-        //self.should_poll_tx
-
-        unsafe { self.outstanding_tx > 0 && _xsk_ring_prod__needs_wakeup(&self.tx) > 0 }
+        let needs_wakeup = unsafe { _xsk_ring_prod__needs_wakeup(&self.tx) } != 0;
+        let has_transmissions = self.outstanding_tx > 0;
+        has_transmissions && needs_wakeup
     }
 
-    pub fn poll_tx(&mut self) -> io::Result<()> {
-        if !self.should_poll_tx() {
-            return Ok(());
+    pub fn poll_tx(&mut self) -> TxPoll {
+        if self.tx_poll_state == TxPoll::Empty {
+            return TxPoll::Empty;
         }
 
-        let errno = self.kick_tx()?;
-
-        self.should_poll_tx = false;
-
-        // let max_len = self.outstanding_tx.min(self.tuning.tx_batch_size as u64);
-        let max_len = self.outstanding_tx;
-        let mut index = 0;
-        let completed =
-            unsafe { _xsk_ring_cons__peek(&mut self.umem.completion_queue, max_len, &mut index) };
-
-        if completed == 0 {
-            return if let Some(errno) = errno {
-                Err(io::Error::from_raw_os_error(errno))
-            } else {
-                Ok(())
-            };
-        }
+        let completed = self.umem.device_complete(
+            &mut self.tx_frames,
+            self.outstanding_tx as _,
+            &mut self.stats,
+        );
 
         self.stats.tx.packets += completed as usize;
-
-        for offset in 0..completed {
-            let addr = unsafe {
-                *_xsk_ring_cons__comp_addr(&self.umem.completion_queue, index + offset as u32)
-            };
-
-            if self.tx_frames.free(addr).is_err() {
-                self.stats.tx.double_free += 1;
-            }
-        }
-
-        unsafe {
-            _xsk_ring_cons__release(&mut self.umem.completion_queue, completed);
-        }
-
         self.outstanding_tx -= completed;
 
-        Ok(())
-    }
-
-    fn kick_rx(&mut self) -> io::Result<Option<i32>> {
-        let result = unsafe {
-            libc::recvfrom(
-                self.as_raw_fd(),
-                core::ptr::null_mut(),
-                0,
-                libc::MSG_DONTWAIT,
-                core::ptr::null_mut(),
-                core::ptr::null_mut(),
-            )
-        };
-
-        if result >= 0 {
-            return Ok(None);
+        // if we no longer have any outstanding transmissions, then we're empty
+        if self.outstanding_tx == 0 {
+            self.tx_poll_state = TxPoll::Empty;
         }
 
-        let errno = unsafe { *libc::__errno_location() };
-
-        if matches!(
-            errno,
-            libc::ENOBUFS | libc::EAGAIN | libc::EBUSY | libc::ENETDOWN
-        ) {
-            return Ok(Some(libc::EWOULDBLOCK));
+        match &mut self.tx_poll_state {
+            TxPoll::Empty => TxPoll::Empty,
+            TxPoll::Poll { should_wake } => TxPoll::Poll {
+                should_wake: core::mem::take(should_wake),
+            },
         }
-
-        Err(std::io::Error::from_raw_os_error(errno))
-    }
-
-    /// Notifies the tx device that packets are available for sending
-    ///
-    /// In copy mode, Tx is driven by a syscall so we need to use e.g. sendto() to
-    /// really send the packets. In zero-copy mode we do not have to do this, since Tx
-    /// is driven by the NAPI loop. So as an optimization, we do not have to call
-    /// sendto() all the time in zero-copy mode.
-    fn kick_tx(&mut self) -> io::Result<Option<i32>> {
-        // TODO check if we're in zero copy mode
-
-        let result = unsafe {
-            libc::sendto(
-                self.as_raw_fd(),
-                core::ptr::null(),
-                0,
-                libc::MSG_DONTWAIT,
-                core::ptr::null(),
-                0,
-            )
-        };
-
-        if result >= 0 {
-            return Ok(None);
-        }
-
-        let errno = unsafe { *libc::__errno_location() };
-
-        if matches!(
-            errno,
-            libc::ENOBUFS | libc::EAGAIN | libc::EBUSY | libc::ENETDOWN
-        ) {
-            self.stats.tx.blocks += 1;
-            return Ok(Some(libc::EWOULDBLOCK));
-        }
-
-        Err(std::io::Error::from_raw_os_error(errno))
     }
 
     fn print_stats(&mut self) {
@@ -367,12 +287,35 @@ impl Socket {
                 return;
             }
         }
-        self.stats.rx.outstanding = self.outstanding_rx.len as _;
         self.stats.tx.outstanding = self.outstanding_tx as _;
         self.stats.rx.free_frames = self.rx_frames.free_perc();
         self.stats.tx.free_frames = self.tx_frames.free_perc();
         eprintln!("{}", self.stats,);
         self.stats.last_print_time = Some(now);
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum TxPoll {
+    /// There are no outstanding transmissions
+    Empty,
+    /// The caller should issue a poll call to the sockets' file descriptor
+    Poll {
+        /// The caller should wake the application when progress is made
+        should_wake: bool,
+    },
+}
+
+impl TxPoll {
+    fn on_transmit(&mut self) {
+        match self {
+            Self::Empty => *self = Self::Poll { should_wake: false },
+            _ => {}
+        }
+    }
+
+    fn on_blocked(&mut self) {
+        *self = Self::Poll { should_wake: true }
     }
 }
 
@@ -437,63 +380,78 @@ impl Umem {
     }
 
     /// Transfers frames to the device for RX
+    #[inline(never)]
     fn device_fill(&mut self, frames: &mut FrameQueue) -> u32 {
-        let max_fill_size = frames.remaining_capacity() as u32;
+        let mut filled_frames = 0;
 
-        let fill_frames_capacity =
-            unsafe { _xsk_prod_nb_free(&mut self.fill_queue, max_fill_size) };
+        while frames.has_capacity() {
+            let mut index = 0;
+            let has_item = unsafe { _xsk_ring_prod__reserve(&mut self.fill_queue, 1, &mut index) };
 
-        if fill_frames_capacity == 0 {
-            return 0;
-        }
+            if has_item != 1 {
+                break;
+            }
 
-        let fill_frames_capacity = (fill_frames_capacity as u32).min(max_fill_size);
+            filled_frames += 1;
 
-        let mut idx = 0;
-
-        let reserved_len = unsafe {
-            _xsk_ring_prod__reserve(&mut self.fill_queue, fill_frames_capacity as _, &mut idx)
-        };
-
-        if reserved_len == 0 {
-            return 0;
-        }
-
-        /*
-        // handle the edge case where it doesn't reserve the entire thing
-        while reserved_len != (fill_frames_capacity as u64) {
-            dbg!("EDGE CASE!!!");
-            reserved_len =
-                unsafe { _xsk_ring_prod__reserve(&mut self.fill_queue, recv_len, &mut idx) };
-        }
-        */
-
-        // provide indexes from the frame pool
-        for offset in 0..(reserved_len as u32) {
             let addr = frames.alloc().expect("frame capacity checked");
-            unsafe { *_xsk_ring_prod__fill_addr(&mut self.fill_queue, idx + offset) = addr }
+            unsafe { *_xsk_ring_prod__fill_addr(&mut self.fill_queue, index) = addr }
         }
 
         unsafe {
-            _xsk_ring_prod__submit(&mut self.fill_queue, reserved_len as _);
+            _xsk_ring_prod__submit(&mut self.fill_queue, filled_frames as _);
         }
 
-        reserved_len as _
+        filled_frames
+    }
+
+    /// Transfers frames from the device for TX
+    #[inline(never)]
+    fn device_complete(
+        &mut self,
+        frames: &mut FrameQueue,
+        outstanding_tx: u32,
+        stats: &mut Stats,
+    ) -> u64 {
+        let peek_len = unsafe { _xsk_cons_nb_avail(&mut self.completion_queue, outstanding_tx) };
+
+        if peek_len <= 0 {
+            return 0;
+        }
+
+        let mut index = 0;
+        let completed =
+            unsafe { _xsk_ring_cons__peek(&mut self.completion_queue, peek_len as _, &mut index) };
+
+        if completed == 0 {
+            return 0;
+        }
+
+        for offset in 0..(completed as _) {
+            let addr =
+                unsafe { *_xsk_ring_cons__comp_addr(&self.completion_queue, index + offset) };
+
+            if frames.free(addr).is_err() {
+                stats.tx.double_free += 1;
+            }
+        }
+
+        unsafe {
+            _xsk_ring_cons__release(&mut self.completion_queue, completed);
+        }
+
+        completed
     }
 }
 
 pub struct RxQueue<'a> {
-    initial_len: u32,
+    consumed_len: usize,
     socket: &'a mut Socket,
 }
 
 impl<'a> RxQueue<'a> {
-    pub fn len(&self) -> usize {
-        self.socket.outstanding_rx.len as _
-    }
-
     pub fn is_empty(&self) -> bool {
-        self.len() == 0
+        self.socket.next_rx_index.is_none()
     }
 }
 
@@ -501,7 +459,7 @@ impl<'a> Iterator for RxQueue<'a> {
     type Item = &'a mut [u8];
 
     fn next(&mut self) -> Option<Self::Item> {
-        let index = self.socket.outstanding_rx.next()?;
+        let index = self.socket.next_rx_index.take()?;
 
         let desc = unsafe { &*_xsk_ring_cons__rx_desc(&self.socket.rx, index) };
         let addr = desc.addr;
@@ -514,8 +472,12 @@ impl<'a> Iterator for RxQueue<'a> {
             self.socket.stats.rx.double_free += 1;
         }
 
+        self.consumed_len += 1;
         self.socket.stats.rx.packets += 1;
         self.socket.stats.rx.bytes += data.len();
+
+        // fetch the next available rx index
+        self.socket.next_rx_index = self.socket.pop_rx_index();
 
         Some(data)
     }
@@ -523,11 +485,15 @@ impl<'a> Iterator for RxQueue<'a> {
 
 impl<'a> Drop for RxQueue<'a> {
     fn drop(&mut self) {
-        let consumed = self.initial_len - self.socket.outstanding_rx.len;
+        let consumed = self.consumed_len;
         if consumed > 0 {
             unsafe {
                 _xsk_ring_cons__release(&mut self.socket.rx, consumed as _);
             }
+
+            // give the device any consumed frames
+            self.socket.stats.rx.pending_packets +=
+                self.socket.umem.device_fill(&mut self.socket.rx_frames) as usize;
         }
     }
 }
@@ -548,6 +514,7 @@ impl<'a> TxQueue<'a> {
             if self.transmitted_len > self.socket.tuning.tx_batch_size
                 || !self.socket.tx_frames.has_capacity()
             {
+                self.socket.tx_poll_state.on_blocked();
                 return Err(tx::Error::AtCapacity);
             }
 
@@ -557,11 +524,12 @@ impl<'a> TxQueue<'a> {
 
             // no more free slots
             if reservation != 1 {
+                self.socket.tx_poll_state.on_blocked();
                 return Err(tx::Error::AtCapacity);
             }
 
             let desc = unsafe { &mut *_xsk_ring_prod__tx_desc(&mut self.socket.tx, index) };
-            desc.addr = self.socket.tx_frames.alloc().unwrap();
+            desc.addr = self.socket.tx_frames.alloc().unwrap() + XDP_PACKET_HEADROOM as u64;
 
             desc
         };
@@ -601,7 +569,7 @@ impl<'a> Drop for TxQueue<'a> {
     fn drop(&mut self) {
         let consumed = self.transmitted_len;
         if consumed > 0 {
-            self.socket.should_poll_tx = true;
+            self.socket.tx_poll_state.on_transmit();
             unsafe {
                 _xsk_ring_prod__submit(&mut self.socket.tx, consumed as _);
             }
