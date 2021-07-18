@@ -379,6 +379,9 @@ impl<E: Endpoint> Instance<E> {
         tokio::pin!(sleep);
 
         let mut packets = std::collections::VecDeque::new();
+        let factor = std::env::var("FACTOR")
+            .map(|v| v.parse().unwrap())
+            .unwrap_or(1);
 
         loop {
             // Poll for socket changes
@@ -404,7 +407,15 @@ impl<E: Endpoint> Instance<E> {
             let mut tx_queue = socket.get_mut().tx_queue();
             'next: loop {
                 if let Some((addr, payload)) = packets.front() {
-                    if tx_queue.push((*addr, payload)).is_ok() {
+                    let mut did_send = false;
+                    for _ in 0..factor {
+                        if tx_queue.push((*addr, payload)).is_ok() {
+                            did_send = true;
+                        } else {
+                            break 'next;
+                        }
+                    }
+                    if did_send {
                         let _ = packets.pop_front();
                     }
                 } else {
@@ -413,60 +424,60 @@ impl<E: Endpoint> Instance<E> {
             }
 
             /*
-            let wakeups = endpoint.wakeups(clock.get_time());
-            // pin the wakeups future so we don't have to move it into the Select future.
-            tokio::pin!(wakeups);
+                let wakeups = endpoint.wakeups(clock.get_time());
+                // pin the wakeups future so we don't have to move it into the Select future.
+                tokio::pin!(wakeups);
 
-            let select = Select::new(socket_task, &mut wakeups, &mut sleep);
+                let select = Select::new(socket_task, &mut wakeups, &mut sleep);
 
-            let mut reset_clock = false;
+                let mut reset_clock = false;
 
-            if let Ok((socket_result, timeout_result)) = select.await {
-                if socket_result.is_some() {
-                    let mut rx_queue = socket.get_mut().rx_queue();
-                    use s2n_quic_core::io::rx::Queue;
-                    if !rx_queue.is_empty() {
-                        endpoint.receive(&mut rx_queue, clock.get_time());
+                if let Ok((socket_result, timeout_result)) = select.await {
+                    if socket_result.is_some() {
+                        let mut rx_queue = socket.get_mut().rx_queue();
+                        use s2n_quic_core::io::rx::Queue;
+                        if !rx_queue.is_empty() {
+                            endpoint.receive(&mut rx_queue, clock.get_time());
+                        }
                     }
+
+                    // if the timer expired ensure it is reset to the default timeout
+                    if timeout_result {
+                        reset_clock = true;
+                    }
+                } else {
+                    // The endpoint has shut down
+                    return Ok(());
                 }
 
-                // if the timer expired ensure it is reset to the default timeout
-                if timeout_result {
-                    reset_clock = true;
+                let now = clock.get_time();
+
+                let mut tx_queue = socket.get_mut().tx_queue();
+                endpoint.transmit(&mut tx_queue, now);
+
+                if let Some(delay) = endpoint.timeout() {
+                    let delay = unsafe {
+                        // Safety: the same clock epoch is being used
+                        delay.as_duration()
+                    };
+
+                    // floor the delay to milliseconds to reduce timer churn
+                    let delay = Duration::from_millis(delay.as_millis() as u64);
+
+                    // add the delay to the clock's epoch
+                    let next_time = clock.0 + delay;
+                    // wake up at least once every MAX_TIMEOUT
+                    //let max_timeout = unsafe { clock.0 + now.as_duration() + MAX_TIMEOUT };
+                    //let next_time = max_timeout.min(next_time);
+
+                    // if the clock has changed let the sleep future know
+                    if next_time != prev_time {
+                        sleep.as_mut().reset(next_time);
+                        prev_time = next_time;
+                    }
+                } else if reset_clock {
+                    sleep.as_mut().reset(Instant::now() + MAX_TIMEOUT);
                 }
-            } else {
-                // The endpoint has shut down
-                return Ok(());
-            }
-
-            let now = clock.get_time();
-
-            let mut tx_queue = socket.get_mut().tx_queue();
-            endpoint.transmit(&mut tx_queue, now);
-
-            if let Some(delay) = endpoint.timeout() {
-                let delay = unsafe {
-                    // Safety: the same clock epoch is being used
-                    delay.as_duration()
-                };
-
-                // floor the delay to milliseconds to reduce timer churn
-                let delay = Duration::from_millis(delay.as_millis() as u64);
-
-                // add the delay to the clock's epoch
-                let next_time = clock.0 + delay;
-                // wake up at least once every MAX_TIMEOUT
-                //let max_timeout = unsafe { clock.0 + now.as_duration() + MAX_TIMEOUT };
-                //let next_time = max_timeout.min(next_time);
-
-                // if the clock has changed let the sleep future know
-                if next_time != prev_time {
-                    sleep.as_mut().reset(next_time);
-                    prev_time = next_time;
-                }
-            } else if reset_clock {
-                sleep.as_mut().reset(Instant::now() + MAX_TIMEOUT);
-            }
             */
         }
     }
