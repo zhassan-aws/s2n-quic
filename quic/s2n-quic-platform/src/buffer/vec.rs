@@ -5,6 +5,7 @@ use crate::buffer::Buffer;
 use core::{
     fmt,
     ops::{Deref, DerefMut},
+    pin::Pin,
 };
 use s2n_quic_core::path::DEFAULT_MAX_MTU;
 
@@ -12,7 +13,7 @@ use s2n_quic_core::path::DEFAULT_MAX_MTU;
 const DEFAULT_MESSAGE_COUNT: usize = 1024;
 
 pub struct VecBuffer {
-    region: alloc::vec::Vec<u8>,
+    region: Pin<alloc::boxed::Box<[u8]>>,
     mtu: usize,
 }
 
@@ -20,9 +21,21 @@ impl VecBuffer {
     /// Create a contiguous buffer with the specified number of messages
     pub fn new(message_count: usize, mtu: usize) -> Self {
         let len = message_count * mtu;
-        let region = alloc::vec![0; len];
+        let mut region = Pin::new(alloc::vec![0; len].into_boxed_slice());
+
+        // try to mlock the buffer into memory to ensure it doesn't get swapped to disk
+        let _ = libc!(mlock(region.as_mut_ptr() as *mut _ as _, region.len()));
 
         Self { region, mtu }
+    }
+}
+
+impl Drop for VecBuffer {
+    fn drop(&mut self) {
+        let _ = libc!(munlock(
+            self.region.as_mut_ptr() as *mut _ as _,
+            self.region.len()
+        ));
     }
 }
 
@@ -61,12 +74,12 @@ impl Deref for VecBuffer {
     type Target = [u8];
 
     fn deref(&self) -> &[u8] {
-        self.region.as_ref()
+        self.region.deref()
     }
 }
 
 impl DerefMut for VecBuffer {
     fn deref_mut(&mut self) -> &mut [u8] {
-        self.region.as_mut()
+        self.region.deref_mut()
     }
 }
