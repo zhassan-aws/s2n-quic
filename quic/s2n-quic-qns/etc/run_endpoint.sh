@@ -7,7 +7,7 @@
 set -e
 set -o pipefail
 
-export RUST_LOG="debug"
+# export RUST_LOG="debug"
 export RUST_BACKTRACE="1"
 
 # Set up the routing needed for the simulation

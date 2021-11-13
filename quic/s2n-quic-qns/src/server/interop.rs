@@ -112,13 +112,20 @@ impl Interop {
         async fn handle_h09_stream(stream: BidirectionalStream, www_dir: Arc<Path>) -> Result<()> {
             let (rx_stream, mut tx_stream) = stream.split();
             let path = interop::read_request(rx_stream).await?;
+            eprintln!("GET /{}", path);
             let mut abs_path = www_dir.to_path_buf();
             abs_path.extend(
                 path.split('/')
                     .filter(|segment| !segment.starts_with('.'))
                     .map(std::path::Path::new),
             );
-            let mut file = File::open(&abs_path).await?;
+            let mut file = match File::open(&abs_path).await {
+                Ok(file) => file,
+                Err(err) => {
+                    eprintln!("failed to open file at {:?}", abs_path);
+                    return Err(err);
+                }
+            };
             loop {
                 match file.next().await {
                     Some(Ok(chunk)) => tx_stream.send(chunk).await?,
