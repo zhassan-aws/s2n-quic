@@ -43,6 +43,7 @@ use s2n_quic_core::{
 };
 
 pub mod close;
+mod close_transmission;
 mod config;
 pub mod connect;
 pub mod handle;
@@ -81,6 +82,8 @@ pub struct Endpoint<Cfg: Config> {
     version_negotiator: version::Negotiator<Cfg>,
     retry_dispatch: retry::Dispatch<Cfg::PathHandle>,
     stateless_reset_dispatch: stateless_reset::Dispatch<Cfg::PathHandle>,
+    /// Track ConnectionClose frames that must be sent to peers.
+    close_transmission: close_transmission::Dispatch<Cfg::PathHandle>,
     close_packet_buffer: packet_buffer::Buffer,
     /// The largest maximum transmission unit (MTU) that can be sent on a path
     max_mtu: MaxMtu,
@@ -164,6 +167,7 @@ impl<Cfg: Config> s2n_quic_core::endpoint::Endpoint for Endpoint<Cfg> {
             self.retry_dispatch.on_transmit(queue, &mut publisher);
             self.stateless_reset_dispatch
                 .on_transmit(queue, &mut publisher);
+            self.close_transmission.on_transmit(queue, &mut publisher);
         }
     }
 
@@ -306,6 +310,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
             version_negotiator: version::Negotiator::default(),
             retry_dispatch: retry::Dispatch::default(),
             stateless_reset_dispatch: stateless_reset::Dispatch::default(),
+            close_transmission: close_transmission::Dispatch::default(),
             close_packet_buffer: Default::default(),
             max_mtu: Default::default(),
         };
@@ -753,6 +758,9 @@ impl<Cfg: Config> Endpoint<Cfg> {
                     publisher.on_endpoint_connection_attempt_failed(
                         event::builder::EndpointConnectionAttemptFailed { error: err },
                     );
+
+                    self.close_transmission
+                        .queue(source_connection_id, header.path, err);
                 }
             }
             (_, packet) => {

@@ -211,7 +211,7 @@ impl<Path: path::Handle> core::fmt::Debug for Transmission<Path> {
 }
 
 impl<Path: path::Handle> Transmission<Path> {
-    pub fn new(path: Path, initial_packet: &packet::initial::ProtectedInitial) -> Self {
+    fn new(path: Path, initial_packet: &packet::initial::ProtectedInitial) -> Self {
         let mut packet_buf = [0u8; MINIMUM_MTU as usize];
         let version_packet = packet::version_negotiation::VersionNegotiation::from_initial(
             initial_packet,
