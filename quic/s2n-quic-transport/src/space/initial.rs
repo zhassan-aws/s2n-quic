@@ -228,7 +228,7 @@ impl<Config: endpoint::Config> InitialSpace<Config> {
         Ok((outcome, buffer))
     }
 
-    pub(super) fn on_transmit_close<'a>(
+    pub fn on_transmit_close<'a>(
         &mut self,
         context: &mut ConnectionTransmissionContext<Config>,
         connection_close: &ConnectionClose,

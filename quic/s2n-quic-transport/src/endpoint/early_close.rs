@@ -32,8 +32,15 @@ impl<Path: path::Handle> Dispatch<Path> {
     }
 
     pub fn queue(&mut self, cid: PeerId, path: Path, error: connection::Error) {
+        // check if there is already an entry
+        //   if yes
+        //     then mark for transmit
+        //   else
+        //     insert
+        //
+        //
         // if !error.is_transport_error() {
-        //   return;
+        //     return;
         // }
 
         match self.transmissions.get_mut(&cid) {
@@ -63,6 +70,14 @@ impl<Path: path::Handle> Dispatch<Path> {
         queue: &mut Tx,
         _publisher: &mut Pub,
     ) {
+        // iterate over list
+        //   if ready for transmit
+        //     push to queue
+        //   else
+        //     remove from list (maybe check ttl)
+        //
+        //
+        //
         // while let Some((cid, transmission)) = self.transmissions.pop_first() {
         //     if let None = transmission.sent {
         //         // transmission.sent = Some(now);
@@ -77,29 +92,7 @@ impl<Path: path::Handle> Dispatch<Path> {
         //         }
         //     }
         // }
-
-        for cid in self.transmissions.keys() {
-            self.transmissions.entry(*cid);
-        }
-
-        for (cid, transmission) in self.transmissions.into_iter() {
-            // if transmission.is_expired() {
-            //     self.transmissions.remove(cid);
-            // }
-
-            if let None = transmission.sent {
-                // transmission.sent = Some(now);
-                match queue.push(&transmission) {
-                    Ok(tx::Outcome { .. }) => {
-                        // TODO emit event
-                    }
-                    Err(_) => {
-                        self.transmissions.insert(cid, transmission);
-                        return;
-                    }
-                }
-            }
-        }
+        todo!()
     }
 }
 
@@ -138,8 +131,7 @@ impl<Path: path::Handle> Transmission<Path> {
 
 impl<Path: path::Handle> AsRef<[u8]> for Transmission<Path> {
     fn as_ref(&self) -> &[u8] {
-        // &self.packet[..self.packet_len]
-        todo!()
+        &self.packet[..self.packet_len]
     }
 }
 

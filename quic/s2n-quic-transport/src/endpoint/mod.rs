@@ -8,17 +8,20 @@ use crate::{
         self,
         limits::{ConnectionInfo as LimitsInfo, Limiter as _},
         ConnectionContainer, ConnectionContainerIterationResult, ConnectionIdMapper,
-        InternalConnectionId, InternalConnectionIdGenerator, ProcessingError, Trait as _,
+        ConnectionTransmissionContext, InternalConnectionId, InternalConnectionIdGenerator,
+        ProcessingError, Trait as _,
     },
     endpoint,
     endpoint::close::CloseHandle,
     recovery::congestion_controller::{self, Endpoint as _},
-    space::PacketSpaceManager,
+    space::{PacketSpaceManager, TxPacketNumbers},
+    transmission,
     wakeup_queue::WakeupQueue,
 };
 use alloc::collections::VecDeque;
 use core::{
     convert::TryInto,
+    marker::PhantomData,
     task::{self, Poll},
 };
 use s2n_codec::{DecoderBuffer, DecoderBufferMut};
@@ -32,9 +35,12 @@ use s2n_quic_core::{
     event::{self, supervisor, EndpointPublisher as _, IntoEvent, Subscriber as _},
     inet::{datagram, DatagramInfo},
     io::{rx, tx},
-    packet::{initial::ProtectedInitial, ProtectedPacket},
-    path,
-    path::{Handle as _, MaxMtu},
+    packet::{
+        initial::{Initial, ProtectedInitial},
+        number::{PacketNumber, PacketNumberSpace},
+        ProtectedPacket,
+    },
+    path::{self, Handle as _, MaxMtu, RemoteAddress},
     random::Generator as _,
     stateless_reset::token::{Generator as _, LEN as StatelessResetTokenLen},
     time::{Clock, Timestamp},
@@ -43,9 +49,9 @@ use s2n_quic_core::{
 };
 
 pub mod close;
-mod close_transmission;
 mod config;
 pub mod connect;
+mod early_close;
 pub mod handle;
 mod initial;
 mod packet_buffer;
@@ -83,7 +89,7 @@ pub struct Endpoint<Cfg: Config> {
     retry_dispatch: retry::Dispatch<Cfg::PathHandle>,
     stateless_reset_dispatch: stateless_reset::Dispatch<Cfg::PathHandle>,
     /// Track ConnectionClose frames that must be sent to peers.
-    close_transmission: close_transmission::Dispatch<Cfg::PathHandle>,
+    close_transmission: early_close::Dispatch<Cfg::PathHandle>,
     close_packet_buffer: packet_buffer::Buffer,
     /// The largest maximum transmission unit (MTU) that can be sent on a path
     max_mtu: MaxMtu,
@@ -310,7 +316,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
             version_negotiator: version::Negotiator::default(),
             retry_dispatch: retry::Dispatch::default(),
             stateless_reset_dispatch: stateless_reset::Dispatch::default(),
-            close_transmission: close_transmission::Dispatch::default(),
+            close_transmission: early_close::Dispatch::default(),
             close_packet_buffer: Default::default(),
             max_mtu: Default::default(),
         };
@@ -739,13 +745,68 @@ impl<Cfg: Config> Endpoint<Cfg> {
                     None
                 };
 
-                if let Err(err) = self.handle_initial_packet(
+                #[allow(unreachable_code)]
+                #[allow(unreachable_patterns)]
+                self.bla(
+                    todo!(),
+                    close_packet_buffer,
+                    endpoint_context.connection_close_formatter,
+                    remote_address,
+                );
+
+                if let Err((Some((path_id, publisher)), err)) = self.handle_initial_packet(
                     header,
                     datagram,
                     packet,
                     remaining,
                     retry_token_dcid,
                 ) {
+                    if let Some((early_connection_close, _connection_close)) =
+                        s2n_quic_core::connection::error::as_frame(
+                            err,
+                            endpoint_context.connection_close_formatter,
+                            &s2n_quic_core::connection::close::Context::new(&remote_address),
+                        )
+                    {
+                        let mut outcome = transmission::Outcome::default();
+                        // TODO send a minimal connection close frame
+                        let packet_number = PacketNumber::default();
+                        let quic_version = 0x00000001;
+                        let tx_packet_numbers =
+                            TxPacketNumbers::new(PacketNumberSpace::Initial, timestamp);
+                        let payload = transmission::Transmission {
+                            config: <PhantomData<Cfg>>::default(),
+                            outcome: &mut outcome,
+                            packet_number,
+                            payload: transmission::connection_close::Payload {
+                                connection_close: &early_connection_close,
+                                packet_number_space: PacketNumberSpace::Initial,
+                            },
+                            timestamp,
+                            transmission_constraint: transmission::Constraint::None,
+                            transmission_mode: transmission::Mode::Normal,
+                            tx_packet_numbers: &mut tx_packet_numbers,
+                            path_id,
+                            publisher,
+                        };
+
+                        let packet = Initial {
+                            version: quic_version,
+                            destination_connection_id: destination_connection_id.as_ref(),
+                            source_connection_id: source_connection_id.as_ref(),
+                            token: &[..],
+                            packet_number,
+                            payload,
+                        };
+                        // let (_protected_packet, buffer) = packet.encode_packet(
+                        //     &self.key,
+                        //     &self.header_key,
+                        //     packet_number,
+                        //     MINIMUM_MTU,
+                        //     buffer,
+                        // )?;
+                    }
+
                     // TODO send a minimal connection close frame
                     let mut publisher = event::EndpointPublisherSubscriber::new(
                         event::builder::EndpointMeta {
@@ -758,9 +819,6 @@ impl<Cfg: Config> Endpoint<Cfg> {
                     publisher.on_endpoint_connection_attempt_failed(
                         event::builder::EndpointConnectionAttemptFailed { error: err },
                     );
-
-                    self.close_transmission
-                        .queue(source_connection_id, header.path, err);
                 }
             }
             (_, packet) => {
@@ -804,6 +862,50 @@ impl<Cfg: Config> Endpoint<Cfg> {
                     self.enqueue_stateless_reset(header, datagram, &destination_connection_id);
                 }
             }
+        }
+    }
+
+    fn bla<'a>(
+        &self,
+        err: connection::error::Error,
+        close_packet_buffer: &mut packet_buffer::Buffer,
+        connection_close_formatter: &'a mut Cfg::ConnectionCloseFormatter,
+        remote_address: RemoteAddress,
+    ) {
+        if let Some((early_connection_close, _connection_close)) =
+            s2n_quic_core::connection::error::as_frame(
+                err,
+                connection_close_formatter,
+                &s2n_quic_core::connection::close::Context::new(&remote_address),
+            )
+        {
+            // let mut context = ConnectionTransmissionContext {
+            //     quic_version: self.event_context.quic_version,
+            //     timestamp,
+            //     path_id,
+            //     path_manager,
+            //     local_id_registry: &mut self.local_id_registry,
+            //     outcome,
+            //     min_packet_len: None,
+            //     ecn,
+            //     transmission_mode,
+            //     publisher: &mut self.event_context.publisher(timestamp, subscriber),
+            // };
+
+            #[allow(unreachable_code)]
+            #[allow(unused)]
+            close_packet_buffer.write(|buffer| {
+                let pm: PacketSpaceManager<Cfg> = todo!();
+                let context: ConnectionTransmissionContext<Cfg> = todo!();
+
+                pm.initial()
+                    .unwrap()
+                    .on_transmit_close(&mut context, &early_connection_close, buffer)
+                    .unwrap();
+
+                // self.close_transmission
+                //     .queue(source_connection_id, header.path, err);
+            });
         }
     }
 
