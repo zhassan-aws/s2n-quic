@@ -173,7 +173,8 @@ impl<Cfg: Config> s2n_quic_core::endpoint::Endpoint for Endpoint<Cfg> {
             self.retry_dispatch.on_transmit(queue, &mut publisher);
             self.stateless_reset_dispatch
                 .on_transmit(queue, &mut publisher);
-            self.close_transmission.on_transmit(queue, &mut publisher);
+            self.close_transmission
+                .on_transmit(queue, timestamp, &mut publisher);
         }
     }
 
@@ -798,6 +799,7 @@ impl<Cfg: Config> Endpoint<Cfg> {
                             packet_number,
                             payload,
                         };
+
                         // let (_protected_packet, buffer) = packet.encode_packet(
                         //     &self.key,
                         //     &self.header_key,
@@ -805,6 +807,9 @@ impl<Cfg: Config> Endpoint<Cfg> {
                         //     MINIMUM_MTU,
                         //     buffer,
                         // )?;
+                        //
+                        self.close_transmission
+                            .queue(source_connection_id, header.path, err);
                     }
 
                     // TODO send a minimal connection close frame
@@ -862,50 +867,6 @@ impl<Cfg: Config> Endpoint<Cfg> {
                     self.enqueue_stateless_reset(header, datagram, &destination_connection_id);
                 }
             }
-        }
-    }
-
-    fn bla<'a>(
-        &self,
-        err: connection::error::Error,
-        close_packet_buffer: &mut packet_buffer::Buffer,
-        connection_close_formatter: &'a mut Cfg::ConnectionCloseFormatter,
-        remote_address: RemoteAddress,
-    ) {
-        if let Some((early_connection_close, _connection_close)) =
-            s2n_quic_core::connection::error::as_frame(
-                err,
-                connection_close_formatter,
-                &s2n_quic_core::connection::close::Context::new(&remote_address),
-            )
-        {
-            // let mut context = ConnectionTransmissionContext {
-            //     quic_version: self.event_context.quic_version,
-            //     timestamp,
-            //     path_id,
-            //     path_manager,
-            //     local_id_registry: &mut self.local_id_registry,
-            //     outcome,
-            //     min_packet_len: None,
-            //     ecn,
-            //     transmission_mode,
-            //     publisher: &mut self.event_context.publisher(timestamp, subscriber),
-            // };
-
-            #[allow(unreachable_code)]
-            #[allow(unused)]
-            close_packet_buffer.write(|buffer| {
-                let pm: PacketSpaceManager<Cfg> = todo!();
-                let context: ConnectionTransmissionContext<Cfg> = todo!();
-
-                pm.initial()
-                    .unwrap()
-                    .on_transmit_close(&mut context, &early_connection_close, buffer)
-                    .unwrap();
-
-                // self.close_transmission
-                //     .queue(source_connection_id, header.path, err);
-            });
         }
     }
 
