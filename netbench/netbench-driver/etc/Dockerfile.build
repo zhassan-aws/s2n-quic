@@ -1,0 +1,71 @@
+FROM rust:latest as planner
+WORKDIR app
+RUN cargo install cargo-chef --version 0.1.23
+COPY Cargo.toml /app
+COPY common /app/common
+COPY quic /app/quic
+COPY netbench /app/netbench
+RUN cargo chef prepare  --recipe-path recipe.json
+
+FROM rust:latest as cacher
+WORKDIR app
+RUN cargo install cargo-chef --version 0.1.23
+COPY --from=planner /app/recipe.json recipe.json
+RUN cargo chef cook --recipe-path recipe.json
+
+FROM rust:latest AS builder
+WORKDIR app
+
+RUN set -eux; \
+  apt-get update; \
+  apt-get install -y cmake clang;
+
+# copy sources
+COPY Cargo.toml /app
+COPY common /app/common
+COPY quic /app/quic
+COPY netbench /app/netbench
+
+# Copy over the cached dependencies
+COPY --from=cacher /app/target target
+COPY --from=cacher /usr/local/cargo /usr/local/cargo
+
+# build runner
+ARG release="true"
+ARG library="s2n-quic"
+ARG endpoint="server"
+RUN set -eux; \
+  mkdir -p bin; \
+  echo "#!/usr/bin/env bash" > bin/start; \
+  echo "eval $library-$endpoint \$@" >> bin/start; \
+  chmod +x bin/start; \
+  if [ "$release" = "true" ]; then \
+  RUSTFLAGS="-C link-arg=-s -C panic=abort" \
+  cargo build --bin netbench-driver-$library-$endpoint --release; \
+  cp target/release/netbench-driver-$library-$endpoint bin/$library-$endpoint; \
+  else \
+  cargo build --bin netbench-driver-$library-$endpoint; \
+  cp target/debug/netbench-driver-$library-$endpoint bin/$library-$endpoint; \
+  fi; \
+  rm -rf target
+
+FROM debian:latest
+
+ENV RUST_BACKTRACE="1"
+
+# install libcrypto
+RUN set -eux; \
+  apt-get update; \
+  apt-get -y install libssl-dev; \
+  rm -rf /var/lib/apt/lists/*; \
+  apt-get clean; \
+  rm -rf /tmp/*; \
+  echo done;
+
+# copy runner
+COPY --from=builder /app/bin/ /usr/bin/
+RUN set -eux; \
+  chmod +x /usr/bin/*; \
+  echo done
+
+ENTRYPOINT ["/usr/bin/start"]

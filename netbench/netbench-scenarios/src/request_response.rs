@@ -30,6 +30,9 @@ config!({
 
     /// The rate at which the server receives data
     let server_receive_rate: Option<Rate> = None;
+
+    /// The number of intermediate certificates to include
+    let intermediates: u64 = 0;
 });
 
 pub fn scenario(config: Config) -> Scenario {
@@ -43,6 +46,7 @@ pub fn scenario(config: Config) -> Scenario {
         server_send_rate,
         server_receive_rate,
         response_delay,
+        intermediates,
     } = config;
 
     let request = |conn: &mut builder::connection::Builder<builder::Client>| {
@@ -76,7 +80,16 @@ pub fn scenario(config: Config) -> Scenario {
     };
 
     Scenario::build(|scenario| {
-        let server = scenario.create_server();
+        let ca = scenario.create_ca();
+
+        let server = scenario.create_server_with(|server| {
+            let key = ca.key_pair_with(|key| {
+                for _ in 0..intermediates {
+                    key.push_ia();
+                }
+            });
+            server.set_cert(key);
+        });
 
         scenario.create_client(|client| {
             client.connect_to(server, |conn| {
