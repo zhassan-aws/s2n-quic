@@ -1,7 +1,10 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{operation as op, Result};
+use crate::{
+    docker::{Compose, Service},
+    operation as op, Result,
+};
 use serde::{Deserialize, Serialize};
 use std::{collections::BTreeMap, path::Path};
 
@@ -40,6 +43,11 @@ impl Scenario {
         serde_json::to_writer_pretty(out, self)?;
         Ok(())
     }
+
+    pub fn compose(&self) -> Compose {
+        let mut compose = Compose::default();
+        compose
+    }
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize, Hash)]
@@ -52,6 +60,19 @@ pub struct Client {
     pub configuration: BTreeMap<String, String>,
 }
 
+impl Client {
+    pub fn compose(&self, id: &Id, idx: usize) -> Service {
+        Service {
+            hostname: Some(if self.name.is_empty() {
+                format!("{}.client.{}", idx, id)
+            } else {
+                format!("{}.client.{}", idx, self.name)
+            }),
+            ..Default::default()
+        }
+    }
+}
+
 #[derive(Clone, Debug, Default, Deserialize, Serialize, Hash)]
 pub struct Server {
     #[serde(skip_serializing_if = "String::is_empty", default)]
@@ -59,6 +80,19 @@ pub struct Server {
     pub connections: Vec<Connection>,
     #[serde(skip_serializing_if = "BTreeMap::is_empty", default)]
     pub configuration: BTreeMap<String, String>,
+}
+
+impl Server {
+    pub fn compose(&self, id: &Id, idx: usize) -> Service {
+        Service {
+            hostname: Some(if self.name.is_empty() {
+                format!("{}.server.{}", idx, id)
+            } else {
+                format!("{}.server.{}", idx, self.name)
+            }),
+            ..Default::default()
+        }
+    }
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, Hash)]
@@ -76,4 +110,17 @@ pub struct Router {
     pub scenario: Vec<op::Router>,
     #[serde(skip_serializing_if = "BTreeMap::is_empty", default)]
     pub configuration: BTreeMap<String, String>,
+}
+
+impl Router {
+    pub fn compose(&self, id: &Id, idx: usize) -> Service {
+        Service {
+            hostname: Some(if self.name.is_empty() {
+                format!("{}.router.{}", idx, id)
+            } else {
+                format!("{}.router.{}", idx, self.name)
+            }),
+            ..Default::default()
+        }
+    }
 }

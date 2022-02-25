@@ -10,6 +10,7 @@ mod driver;
 #[cfg(any(test, feature = "testing"))]
 pub mod testing;
 
+pub mod docker;
 pub mod helper;
 pub mod multiplex;
 pub mod operation;

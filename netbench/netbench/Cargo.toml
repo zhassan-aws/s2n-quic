@@ -10,6 +10,7 @@ default = ["s2n-quic"]
 
 [dependencies]
 bytes = "1"
+docker-compose-types = "0.1"
 enum-primitive-derive = "0.2"
 futures = "0.3"
 humansize = "1"
