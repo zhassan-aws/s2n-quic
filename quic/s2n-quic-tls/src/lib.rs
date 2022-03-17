@@ -18,6 +18,8 @@ pub mod server;
 pub use client::Client;
 pub use server::Server;
 
+// Re-export the `ClientHelloHandler` and `Connection` to make it easier for users
+// to consume. This is internal since it depends on experimental behavior in s2n-tls.
 #[cfg(feature = "internal")]
 pub use s2n_tls::raw::{config::ClientHelloHandler, connection::Connection};
 

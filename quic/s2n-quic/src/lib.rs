@@ -50,6 +50,12 @@
 //!
 //! **NOTE**: this will override the platform detection and always use [`s2n-tls`][s2n-tls] by default.
 //!
+//! ### `internal`
+//!
+//! Enables internal features which are meant for experimentation and are subject to change.
+//!
+//! **NOTE**: All Internal APIs are subject to change without notice.
+//!
 //! [s2n-tls]: https://github.com/aws/s2n-tls
 //! [rustls]: https://github.com/rustls/rustls
 

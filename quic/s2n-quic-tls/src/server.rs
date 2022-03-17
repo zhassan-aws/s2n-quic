@@ -62,6 +62,8 @@ impl Default for Builder {
 }
 
 impl Builder {
+    // This is internal since it depends on experimental behavior in s2n-tls.
+    #[cfg(feature = "internal")]
     pub fn with_client_hello_handler<T: 'static + ClientHelloHandler>(
         mut self,
         handler: T,
