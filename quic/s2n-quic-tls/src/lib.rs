@@ -18,5 +18,8 @@ pub mod server;
 pub use client::Client;
 pub use server::Server;
 
+#[cfg(feature = "internal")]
+pub use s2n_tls::raw::{config::ClientHelloHandler, connection::Connection};
+
 #[cfg(test)]
 mod tests;

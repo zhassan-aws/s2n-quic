@@ -27,6 +27,7 @@ provider-event-tracing = ["s2n-quic-core/event-tracing"]
 provider-tls-default = ["s2n-quic-tls-default"]
 provider-tls-rustls = ["s2n-quic-rustls"]
 provider-tls-s2n = ["s2n-quic-tls"]
+internal = ["s2n-quic-tls/internal"]
 
 [dependencies]
 bytes = { version = "1", default-features = false }

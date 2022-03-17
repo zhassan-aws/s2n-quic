@@ -13,6 +13,7 @@ use s2n_quic::{
         endpoint_limits,
         event::{events, Subscriber},
         io,
+        tls::s2n_tls::{ClientHelloHandler, Connection},
     },
     Server,
 };
@@ -122,6 +123,7 @@ impl Interop {
                     .with_application_protocols(
                         self.application_protocols.iter().map(String::as_bytes),
                     )?
+                    .with_client_hello_handler(Bla {})?
                     .with_key_logging()?
                     .build()?;
 
@@ -148,6 +150,15 @@ impl Interop {
         eprintln!("Server listening on port {}", self.port);
 
         Ok(server)
+    }
+}
+
+struct Bla {}
+
+impl ClientHelloHandler for Bla {
+    fn poll_client_hello(&self, connection: &mut Connection) -> core::task::Poll<Result<(), ()>> {
+        connection.waker().unwrap().wake_by_ref();
+        core::task::Poll::Ready(Ok(()))
     }
 }
 
