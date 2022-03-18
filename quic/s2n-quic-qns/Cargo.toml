@@ -6,6 +6,7 @@ authors = ["AWS s2n"]
 edition = "2018"
 license = "Apache-2.0"
 publish = false
+resolver = "2"
 
 [features]
 default = []
@@ -25,7 +26,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 url = "2"
 
 [target.'cfg(unix)'.dependencies]
-s2n-quic = { path = "../s2n-quic", features = ["provider-event-tracing", "provider-tls-rustls", "provider-tls-s2n", "internal"] }
+s2n-quic = { path = "../s2n-quic", features = ["provider-event-tracing", "provider-tls-rustls", "provider-tls-s2n"] }
 
 [target.'cfg(not(unix))'.dependencies]
 s2n-quic = { path = "../s2n-quic", features = ["provider-event-tracing", "provider-tls-rustls"] }
@@ -33,3 +34,8 @@ s2n-quic = { path = "../s2n-quic", features = ["provider-event-tracing", "provid
 # we don't use openssl-sys directly; it's just here to pin and vendor in dev
 [package.metadata.cargo-udeps.ignore]
 normal = [ "openssl-sys" ]
+
+# Use unstable s2n-quic features
+[target.'cfg(s2n_quic_unstable)'.dependencies]
+s2n-quic = { path = "../s2n-quic", features = ["provider-event-tracing", "provider-tls-rustls", "provider-tls-s2n", "unstable_s2n_quic_tls_client_hello"] }
+

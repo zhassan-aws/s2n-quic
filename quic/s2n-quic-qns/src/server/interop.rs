@@ -13,7 +13,7 @@ use s2n_quic::{
         endpoint_limits,
         event::{events, Subscriber},
         io,
-        tls::s2n_tls::{ClientHelloHandler, Connection},
+        tls::s2n_tls,
     },
     Server,
 };
@@ -23,6 +23,13 @@ use std::{
 };
 use structopt::StructOpt;
 use tokio::spawn;
+
+#[cfg(all(
+    unix,
+    s2n_quic_unstable,
+    feature = "unstable_s2n_quic_tls_client_hello"
+))]
+use s2n_quic::provider::tls::s2n_tls::{ClientHelloHandler, Connection};
 
 #[derive(Debug, StructOpt)]
 pub struct Interop {
@@ -115,17 +122,7 @@ impl Interop {
             TlsProviders::S2N => {
                 // The server builder defaults to a chain because this allows certs to just work, whether
                 // the PEM contains a single cert or a chain
-                let tls = s2n_quic::provider::tls::s2n_tls::Server::builder()
-                    .with_certificate(
-                        tls::s2n::ca(self.certificate.as_ref())?,
-                        tls::s2n::private_key(self.private_key.as_ref())?,
-                    )?
-                    .with_application_protocols(
-                        self.application_protocols.iter().map(String::as_bytes),
-                    )?
-                    .with_client_hello_handler(Bla {})?
-                    .with_key_logging()?
-                    .build()?;
+                let tls = self.build_s2n()?;
 
                 server.with_tls(tls)?.start().unwrap()
             }
@@ -151,11 +148,52 @@ impl Interop {
 
         Ok(server)
     }
+
+    #[cfg(unix)]
+    fn build_s2n(&self) -> Result<s2n_tls::Server> {
+        let tls = s2n_quic::provider::tls::s2n_tls::Server::builder()
+            .with_certificate(
+                tls::s2n::ca(self.certificate.as_ref())?,
+                tls::s2n::private_key(self.private_key.as_ref())?,
+            )?
+            .with_application_protocols(self.application_protocols.iter().map(String::as_bytes))?
+            .with_key_logging()?
+            .build()?;
+        Ok(tls)
+    }
+
+    #[cfg(all(
+        unix,
+        s2n_quic_unstable,
+        feature = "unstable_s2n_quic_tls_client_hello"
+    ))]
+    fn build_s2n(&self) -> Result<s2n_tls::Server> {
+        let tls = s2n_quic::provider::tls::s2n_tls::Server::builder()
+            .with_certificate(
+                tls::s2n::ca(self.certificate.as_ref())?,
+                tls::s2n::private_key(self.private_key.as_ref())?,
+            )?
+            .with_application_protocols(self.application_protocols.iter().map(String::as_bytes))?
+            .with_key_logging()?
+            .with_client_hello_handler(MyClientHelloHandler {})?
+            .build()?;
+        Ok(tls)
+    }
 }
 
-struct Bla {}
+#[cfg(all(
+    unix,
+    s2n_quic_unstable,
+    feature = "unstable_s2n_quic_tls_client_hello"
+))]
+struct MyClientHelloHandler {}
 
-impl ClientHelloHandler for Bla {
+#[cfg(all(
+    unix,
+    s2n_quic_unstable,
+    feature = "unstable_s2n_quic_tls_client_hello"
+))]
+impl ClientHelloHandler for MyClientHelloHandler {
     fn poll_client_hello(&self, connection: &mut Connection) -> core::task::Poll<Result<(), ()>> {
         connection.waker().unwrap().wake_by_ref();
         core::task::Poll::Ready(Ok(()))

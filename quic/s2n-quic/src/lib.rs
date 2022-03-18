@@ -50,14 +50,39 @@
 //!
 //! **NOTE**: this will override the platform detection and always use [`s2n-tls`][s2n-tls] by default.
 //!
-//! ### `internal`
+//! ## Unstable features
 //!
-//! Enables internal features which are meant for experimentation and are subject to change.
+//! The features enable **unstable** features. Un stable features are subject to change without
+//! notice. To enable these features, the `--cfg s2n_quic_unstable` option must be passed to
+//! rustc when compiling. This is easiest done using the RUSTFLAGS env variable:
+//! `RUSTFLAGS=\"--cfg s2n_quic_unstable\"`.
 //!
-//! **NOTE**: All Internal APIs are subject to change without notice.
+//! ### `unstable_s2n_quic_tls_client_hello`
+//!
+//! Enables the `ClientHelloHandler` trait, which can be used in conjunction with
+//! [`s2n_quic::provider::tls::Builder::with_client_hello_handler`] to set the client_hello callback.
 //!
 //! [s2n-tls]: https://github.com/aws/s2n-tls
 //! [rustls]: https://github.com/rustls/rustls
+
+// Add new unstable features to the list below
+cfg_if::cfg_if! {
+    // if unstable features are enabled
+    if #[cfg(any(feature = "unstable_s2n_quic_tls_client_hello"))] {
+
+        // then also confirm that the application is being compiled using the
+        // `--cfg s2n_quic_unstable` flag.
+        #[cfg(not(s2n_quic_unstable))]
+        std::compile_error!("Application must be built with RUSTFLAGS=\"--cfg s2n_quic_unstable\" to use unstable features.");
+    }
+}
+
+// // unstable features
+// #[cfg(any(
+//     feature = "unstable_s2n_quic_tls_client_hello",
+//     feature = "s2n_quic_unstable"
+// ))]
+// std::compile_error!("Either feature \"foo\" or \"bar\" must be enabled for this crate.");
 
 #[macro_use]
 pub mod provider;
