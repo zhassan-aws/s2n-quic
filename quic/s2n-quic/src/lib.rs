@@ -65,6 +65,8 @@
 //! [s2n-tls]: https://github.com/aws/s2n-tls
 //! [rustls]: https://github.com/rustls/rustls
 
+#![feature(doc_cfg)]
+
 #[macro_use]
 pub mod provider;
 

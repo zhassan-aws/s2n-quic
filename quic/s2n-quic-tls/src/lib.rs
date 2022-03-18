@@ -1,6 +1,8 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+#![feature(doc_cfg)]
+
 /// Ensure memory is correctly managed in tests
 #[cfg(test)]
 #[global_allocator]
@@ -21,6 +23,7 @@ pub use server::Server;
 // Re-export the `ClientHelloHandler` and `Connection` to make it easier for users
 // to consume. This depends on experimental behavior in s2n-tls.
 #[cfg(feature = "unstable_s2n_quic_tls_client_hello")]
+#[cfg_attr(docsrs, doc(cfg(feature = "unstable_s2n_quic_tls_client_hello")))]
 pub use s2n_tls::raw::{config::ClientHelloHandler, connection::Connection};
 
 #[cfg(test)]

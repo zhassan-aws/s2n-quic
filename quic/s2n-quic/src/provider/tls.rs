@@ -239,6 +239,7 @@ mod default_tls {
 }
 
 #[cfg(feature = "s2n-quic-rustls")]
+#[cfg_attr(docsrs, doc(cfg(feature = "s2n-quic-rustls")))]
 pub mod rustls {
     //! Provides the [rustls](https://docs.rs/rustls/) implementation of TLS
 
@@ -274,9 +275,13 @@ pub mod rustls {
 }
 
 #[cfg(feature = "s2n-quic-tls")]
+#[cfg_attr(docsrs, doc(cfg(feature = "s2n-quic-tls")))]
 pub mod s2n_tls {
     //! Provides the [s2n-tls](https://github.com/aws/s2n-tls) implementation of TLS
-    pub use s2n_quic_tls::*;
+    pub use s2n_quic_tls::{certificate, client, server, Client, Server};
+    #[cfg(feature = "unstable_s2n_quic_tls_client_hello")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "unstable_s2n_quic_tls_client_hello")))]
+    pub use s2n_quic_tls::{ClientHelloHandler, Connection};
 
     impl super::Provider for Server {
         type Server = Self;

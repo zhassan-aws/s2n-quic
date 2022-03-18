@@ -60,6 +60,11 @@ s2n-quic-core = { path = "../s2n-quic-core", features = ["testing"] }
 s2n-quic-platform = { path = "../s2n-quic-platform", features = ["testing"] }
 tokio = { version = "1", features = ["full"] }
 
-# # list any unstable dependencies here
-# [target.'cfg(s2n_quic_unstable)'.dependencies]
+[package.metadata.docs.rs]
+all-features = true
+# enable unstable features in the documentation
+rustdoc-args = ["--cfg", "docsrs", "--cfg", "s2n_quic_unstable"]
+# it's necessary to _also_ pass `--cfg s2n_quic_unstable` to rustc, or else
+# dependencies will not be enabled, and the docs build will fail.
+rustc-args = ["--cfg", "s2n_quic_unstable"]
 
