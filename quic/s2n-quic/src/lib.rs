@@ -72,8 +72,8 @@ cfg_if::cfg_if! {
 
         // then also confirm that the application is being compiled using the
         // `--cfg s2n_quic_unstable` flag.
-        #[cfg(not(s2n_quic_unstable))]
-        std::compile_error!("Application must be built with RUSTFLAGS=\"--cfg s2n_quic_unstable\" to use unstable features.");
+        // #[cfg(not(s2n_quic_unstable))]
+        // std::compile_error!("Application must be built with RUSTFLAGS=\"--cfg s2n_quic_unstable\" to use unstable features.");
     }
 }
 

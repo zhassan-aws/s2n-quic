@@ -24,13 +24,6 @@ use std::{
 use structopt::StructOpt;
 use tokio::spawn;
 
-#[cfg(all(
-    unix,
-    s2n_quic_unstable,
-    feature = "unstable_s2n_quic_tls_client_hello"
-))]
-use s2n_quic::provider::tls::s2n_tls::{ClientHelloHandler, Connection};
-
 #[derive(Debug, StructOpt)]
 pub struct Interop {
     #[structopt(short, long, default_value = "::")]
@@ -122,7 +115,7 @@ impl Interop {
             TlsProviders::S2N => {
                 // The server builder defaults to a chain because this allows certs to just work, whether
                 // the PEM contains a single cert or a chain
-                let tls = self.build_s2n()?;
+                let tls = self.build_s2n_tls_server()?;
 
                 server.with_tls(tls)?.start().unwrap()
             }
@@ -150,7 +143,7 @@ impl Interop {
     }
 
     #[cfg(unix)]
-    fn build_s2n(&self) -> Result<s2n_tls::Server> {
+    fn build_s2n_tls_server(&self) -> Result<s2n_tls::Server> {
         let tls = s2n_quic::provider::tls::s2n_tls::Server::builder()
             .with_certificate(
                 tls::s2n::ca(self.certificate.as_ref())?,
@@ -159,36 +152,18 @@ impl Interop {
             .with_application_protocols(self.application_protocols.iter().map(String::as_bytes))?
             .with_key_logging()?;
 
-        cfg_if::cfg_if! {
-            if #[cfg(all(
-                unix,
-                s2n_quic_unstable,
-                feature = "unstable_s2n_quic_tls_client_hello"
-            ))] {
-                let tls = tls.with_client_hello_handler(MyClientHelloHandler {})?;
-            }
-        }
+        // cfg_if::cfg_if! {
+        //     if #[cfg(all(
+        //         unix,
+        //         s2n_quic_unstable,
+        //         feature = "unstable_s2n_quic_tls_client_hello"
+        //     ))] {
+        use super::unstable::MyClientHelloHandler;
+        let tls = tls.with_client_hello_handler(MyClientHelloHandler {})?;
+        // }
+        // }
 
         Ok(tls.build()?)
-    }
-}
-
-#[cfg(all(
-    unix,
-    s2n_quic_unstable,
-    feature = "unstable_s2n_quic_tls_client_hello"
-))]
-struct MyClientHelloHandler {}
-
-#[cfg(all(
-    unix,
-    s2n_quic_unstable,
-    feature = "unstable_s2n_quic_tls_client_hello"
-))]
-impl ClientHelloHandler for MyClientHelloHandler {
-    fn poll_client_hello(&self, connection: &mut Connection) -> core::task::Poll<Result<(), ()>> {
-        connection.waker().unwrap().wake_by_ref();
-        core::task::Poll::Ready(Ok(()))
     }
 }
 
