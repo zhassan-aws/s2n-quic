@@ -8,12 +8,13 @@ use crate::{
     tls::TlsProviders,
     Result,
 };
+#[cfg(unix)]
+use s2n_quic::provider::tls::s2n_tls;
 use s2n_quic::{
     provider::{
         endpoint_limits,
         event::{events, Subscriber},
         io,
-        tls::s2n_tls,
     },
     Server,
 };
