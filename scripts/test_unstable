@@ -7,5 +7,5 @@
 
 set -e
 
-RUSTFLAGS="--cfg s2n_quic_unstable" cargo clippy --all-features --all-targets -- -D warnings
+RUSTFLAGS="--cfg s2n_quic_unstable" cargo +stable clippy --all-features --all-targets -- -D warnings
 RUSTFLAGS="--cfg s2n_quic_unstable" cargo test --doc
