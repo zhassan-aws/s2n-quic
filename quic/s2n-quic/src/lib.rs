@@ -77,13 +77,6 @@ cfg_if::cfg_if! {
     }
 }
 
-// // unstable features
-// #[cfg(any(
-//     feature = "unstable_s2n_quic_tls_client_hello",
-//     feature = "s2n_quic_unstable"
-// ))]
-// std::compile_error!("Either feature \"foo\" or \"bar\" must be enabled for this crate.");
-
 #[macro_use]
 pub mod provider;
 

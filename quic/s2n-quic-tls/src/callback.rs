@@ -66,7 +66,8 @@ where
             .set_receive_callback(Some(Self::recv_cb))
             .unwrap();
         connection.set_receive_context(context).unwrap();
-        // A Waker if provided for the [`s2n_tls::config::Builder::set_client_hello_handler`].
+        // A Waker is provided for use with the client hello callback:
+        // [`s2n_quic::provider::tls::s2n_tls::Builder::with_client_hello_handler()`].
         connection.set_waker(Some(self.context.waker())).unwrap();
     }
 

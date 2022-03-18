@@ -157,27 +157,19 @@ impl Interop {
                 tls::s2n::private_key(self.private_key.as_ref())?,
             )?
             .with_application_protocols(self.application_protocols.iter().map(String::as_bytes))?
-            .with_key_logging()?
-            .build()?;
-        Ok(tls)
-    }
+            .with_key_logging()?;
 
-    #[cfg(all(
-        unix,
-        s2n_quic_unstable,
-        feature = "unstable_s2n_quic_tls_client_hello"
-    ))]
-    fn build_s2n(&self) -> Result<s2n_tls::Server> {
-        let tls = s2n_quic::provider::tls::s2n_tls::Server::builder()
-            .with_certificate(
-                tls::s2n::ca(self.certificate.as_ref())?,
-                tls::s2n::private_key(self.private_key.as_ref())?,
-            )?
-            .with_application_protocols(self.application_protocols.iter().map(String::as_bytes))?
-            .with_key_logging()?
-            .with_client_hello_handler(MyClientHelloHandler {})?
-            .build()?;
-        Ok(tls)
+        cfg_if::cfg_if! {
+            if #[cfg(all(
+                unix,
+                s2n_quic_unstable,
+                feature = "unstable_s2n_quic_tls_client_hello"
+            ))] {
+                let tls = tls.with_client_hello_handler(MyClientHelloHandler {})?;
+            }
+        }
+
+        Ok(tls.build()?)
     }
 }
 
