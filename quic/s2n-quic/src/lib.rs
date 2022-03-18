@@ -52,30 +52,18 @@
 //!
 //! ## Unstable features
 //!
-//! The features enable **unstable** features. Un stable features are subject to change without
+//! These features enable **unstable** features. Unstable features are subject to change without
 //! notice. To enable these features, the `--cfg s2n_quic_unstable` option must be passed to
 //! rustc when compiling. This is easiest done using the RUSTFLAGS env variable:
 //! `RUSTFLAGS=\"--cfg s2n_quic_unstable\"`.
 //!
 //! ### `unstable_s2n_quic_tls_client_hello`
 //!
-//! Enables the `ClientHelloHandler` trait, which can be used in conjunction with
-//! [`s2n_quic::provider::tls::Builder::with_client_hello_handler`] to set the client_hello callback.
+//! Enables the `ClientHelloHandler` trait, which can be used to set the client_hello callback on
+//! s2n-tls provider.
 //!
 //! [s2n-tls]: https://github.com/aws/s2n-tls
 //! [rustls]: https://github.com/rustls/rustls
-
-// Add new unstable features to the list below
-cfg_if::cfg_if! {
-    // if unstable features are enabled
-    if #[cfg(any(feature = "unstable_s2n_quic_tls_client_hello"))] {
-
-        // then also confirm that the application is being compiled using the
-        // `--cfg s2n_quic_unstable` flag.
-        // #[cfg(not(s2n_quic_unstable))]
-        // std::compile_error!("Application must be built with RUSTFLAGS=\"--cfg s2n_quic_unstable\" to use unstable features.");
-    }
-}
 
 #[macro_use]
 pub mod provider;
@@ -92,3 +80,11 @@ pub mod application {
 pub use client::Client;
 pub use connection::Connection;
 pub use server::Server;
+
+// Require `--cfg s2n_quic_unstable` is set when using unstable features
+#[cfg(all(
+    not(s2n_quic_unstable),
+    // Add new unstable features to the list below
+    any(feature = "unstable_s2n_quic_tls_client_hello")
+))]
+std::compile_error!("Application must be built with RUSTFLAGS=\"--cfg s2n_quic_unstable\" to use unstable features.");

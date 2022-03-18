@@ -316,8 +316,9 @@ jobs:
 
       - uses: camshaft/rust-cache@v1
 
-      - name: Run cargo test
-        run: cargo test
+      - name: Test s2n_quic --cfg unstable
+        run: cargo test --all-features
+        working-directory: quic/s2n-quic
         env:
           RUSTFLAGS: "--cfg s2n_quic_unstable"
 
@@ -335,7 +336,7 @@ jobs:
 
       - uses: camshaft/rust-cache@v1
 
-      - name: Run cargo build
+      - name: Test s2n_quic --cfg unstable
         run: ./scripts/test_unstable
 
 

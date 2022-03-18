@@ -27,8 +27,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 url = "2"
 
 [target.'cfg(unix)'.dependencies]
-# s2n-quic = { path = "../s2n-quic", features = ["provider-event-tracing", "provider-tls-rustls", "provider-tls-s2n"] }
-s2n-quic = { path = "../s2n-quic", features = ["provider-event-tracing", "provider-tls-rustls", "provider-tls-s2n", "unstable_s2n_quic_tls_client_hello"] }
+s2n-quic = { path = "../s2n-quic", features = ["provider-event-tracing", "provider-tls-rustls", "provider-tls-s2n"] }
 
 [target.'cfg(not(unix))'.dependencies]
 s2n-quic = { path = "../s2n-quic", features = ["provider-event-tracing", "provider-tls-rustls"] }
@@ -37,7 +36,7 @@ s2n-quic = { path = "../s2n-quic", features = ["provider-event-tracing", "provid
 [package.metadata.cargo-udeps.ignore]
 normal = [ "openssl-sys" ]
 
-# # Use unstable s2n-quic features
-# [target.'cfg(s2n_quic_unstable)'.dependencies]
-# s2n-quic = { path = "../s2n-quic", features = ["provider-event-tracing", "provider-tls-rustls", "provider-tls-s2n", "unstable_s2n_quic_tls_client_hello"] }
+# Use unstable s2n-quic features
+[target.'cfg(s2n_quic_unstable)'.dependencies]
+s2n-quic = { path = "../s2n-quic", features = ["provider-event-tracing", "provider-tls-rustls", "provider-tls-s2n", "unstable_s2n_quic_tls_client_hello"] }
 

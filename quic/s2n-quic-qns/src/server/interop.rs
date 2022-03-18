@@ -153,16 +153,15 @@ impl Interop {
             .with_application_protocols(self.application_protocols.iter().map(String::as_bytes))?
             .with_key_logging()?;
 
-        // cfg_if::cfg_if! {
-        //     if #[cfg(all(
-        //         unix,
-        //         s2n_quic_unstable,
-        //         feature = "unstable_s2n_quic_tls_client_hello"
-        //     ))] {
-        use super::unstable::MyClientHelloHandler;
-        let tls = tls.with_client_hello_handler(MyClientHelloHandler {})?;
-        // }
-        // }
+        cfg_if::cfg_if! {
+            if #[cfg(all(
+                s2n_quic_unstable,
+                feature = "unstable_s2n_quic_tls_client_hello"
+            ))] {
+                use super::unstable::MyClientHelloHandler;
+                let tls = tls.with_client_hello_handler(MyClientHelloHandler {})?;
+            }
+        }
 
         Ok(tls.build()?)
     }
