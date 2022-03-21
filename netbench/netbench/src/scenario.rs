@@ -31,6 +31,18 @@ impl Scenario {
         builder.finish()
     }
 
+    pub fn build_pair<F: FnOnce(&mut builder::connection::Builder<builder::client::Client>)>(
+        f: F,
+    ) -> Self {
+        Self::build(|scenario| {
+            let server = scenario.create_server();
+
+            scenario.create_client(|client| {
+                client.connect_to(server, |conn| f(conn));
+            });
+        })
+    }
+
     pub fn open(path: &Path) -> Result<Self> {
         let file = std::fs::File::open(path)?;
         let mut file = std::io::BufReader::new(file);

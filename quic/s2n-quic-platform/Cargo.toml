@@ -12,12 +12,13 @@ exclude = ["corpus.tar.gz"]
 [features]
 default = ["std", "tokio-runtime", "wipe"]
 std = ["s2n-quic-core/std", "socket2", "lazy_static"]
-testing = ["std", "generator"] # Testing allows to overwrite the system time
+testing = ["std", "generator", "futures/std"] # Testing allows to overwrite the system time
 generator = ["bolero-generator", "s2n-quic-core/generator"]
 tokio-runtime = ["futures", "pin-project", "tokio"]
 wipe = ["zeroize"]
 
 [dependencies]
+bach = { path = "../../../../camshaft/bach/bach" }
 bolero-generator = { version = "0.6", default-features = false, optional = true }
 cfg-if = "1"
 errno = "0.2"
@@ -35,5 +36,6 @@ libc = "0.2"
 [dev-dependencies]
 bolero = "0.6"
 bolero-generator = { version = "0.6", default-features = false }
+futures = { version = "0.3", features = ["std"] }
 s2n-quic-core = { path = "../s2n-quic-core", features = ["testing"] }
 tokio = { version = "1", features = ["full"] }

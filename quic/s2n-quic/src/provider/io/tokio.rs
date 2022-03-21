@@ -9,6 +9,7 @@ use s2n_quic_platform::io::tokio;
 use std::io;
 
 pub use self::tokio::{Builder, Io as Provider};
+
 impl super::Provider for Provider {
     type PathHandle = tokio::PathHandle;
     type Error = io::Error;

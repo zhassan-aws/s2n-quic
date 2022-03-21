@@ -1,0 +1,14 @@
+[package]
+name = "netbench-s2n-quic-test"
+version = "0.1.0"
+edition = "2018"
+publish = false
+
+[dependencies]
+bolero = "0.6"
+netbench = { path = "../netbench" }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+s2n-quic = { path = "../../quic/s2n-quic", features = ["provider-event-tracing"] }
+s2n-quic-core = { path = "../../quic/s2n-quic-core", features = ["testing"] }
+s2n-quic-platform = { path = "../../quic/s2n-quic-platform", features = ["testing"] }

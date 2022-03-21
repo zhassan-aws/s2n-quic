@@ -113,6 +113,7 @@ impl<'a, C: Client<'a>> timer::Provider for Driver<'a, C> {
     }
 }
 
+#[derive(Clone)]
 pub struct AddressMap {
     routers: Vec<BTreeMap<u64, SocketAddr>>,
     servers: Vec<SocketAddr>,
@@ -198,6 +199,26 @@ impl AddressMap {
             routers,
             hostnames,
         })
+    }
+
+    pub fn new_simple(scenario: &Scenario, servers: Vec<SocketAddr>) -> Self {
+        let hostname_len = scenario
+            .servers
+            .iter()
+            .map(|server| server.connections.len())
+            .max()
+            .unwrap_or(0);
+
+        let mut hostnames = vec![];
+        for idx in 0..hostname_len {
+            hostnames.push(format!("{}.{}.net", idx, scenario.id));
+        }
+
+        Self {
+            servers,
+            routers: vec![],
+            hostnames,
+        }
     }
 
     pub fn server(&self, server_id: u64) -> SocketAddr {
