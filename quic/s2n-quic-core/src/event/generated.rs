@@ -313,7 +313,11 @@ pub mod api {
         #[non_exhaustive]
         AckInsertionFailed {},
         #[non_exhaustive]
-        DelayedProcessing {},
+        ProcessPending { count: u16 },
+        #[non_exhaustive]
+        AggregatePending { count: u16 },
+        #[non_exhaustive]
+        AggregationPendingFailed {},
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
@@ -2436,7 +2440,9 @@ pub mod builder {
     #[derive(Clone, Debug)]
     pub enum AckVariant {
         AckInsertionFailed,
-        DelayedProcessing,
+        ProcessPending { count: u16 },
+        AggregatePending { count: u16 },
+        AggregationPendingFailed,
     }
     impl IntoEvent<api::AckVariant> for AckVariant {
         #[inline]
@@ -2444,7 +2450,13 @@ pub mod builder {
             use api::AckVariant::*;
             match self {
                 Self::AckInsertionFailed => AckInsertionFailed {},
-                Self::DelayedProcessing => DelayedProcessing {},
+                Self::ProcessPending { count } => ProcessPending {
+                    count: count.into_event(),
+                },
+                Self::AggregatePending { count } => AggregatePending {
+                    count: count.into_event(),
+                },
+                Self::AggregationPendingFailed => AggregationPendingFailed {},
             }
         }
     }

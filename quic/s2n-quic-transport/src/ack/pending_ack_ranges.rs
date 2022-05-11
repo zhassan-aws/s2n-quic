@@ -112,6 +112,16 @@ impl PendingAckRanges {
         self.ack_ranges.max_value()
     }
 
+    /// Returns the number of ACKs stored.
+    pub fn count(&self) -> usize {
+        debug_assert!(
+            self.current_active_path.is_some(),
+            "active path should be set prior to processing acks"
+        );
+
+        self.ack_ranges.count()
+    }
+
     /// Clear the aggregated ACK information
     #[inline]
     pub fn reset_aggregate_info(&mut self) {

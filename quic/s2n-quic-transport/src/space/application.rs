@@ -19,7 +19,11 @@ use s2n_codec::EncoderBuffer;
 use s2n_quic_core::{
     crypto::{application::KeySet, limited, tls, CryptoSuite},
     datagram::Endpoint,
-    event::{self, ConnectionPublisher as _, IntoEvent},
+    event::{
+        self,
+        builder::{AckProcessed, AckVariant},
+        ConnectionPublisher as _, IntoEvent,
+    },
     frame::{
         self, ack::AckRanges, crypto::CryptoRef, datagram::DatagramRef, stream::StreamRef, Ack,
         ConnectionClose, DataBlocked, HandshakeDone, MaxData, MaxStreamData, MaxStreams,
@@ -589,7 +593,11 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
                 .expect("active path should be set"),
             path_manager,
         );
-        // TODO: post metrics, processing pending acks
+        publisher.on_ack_processed(AckProcessed {
+            variant: AckVariant::ProcessPending {
+                count: pending_ack_ranges.count() as u16,
+            },
+        });
         recovery_manager.on_pending_ack_ranges(
             timestamp,
             pending_ack_ranges,
@@ -760,10 +768,17 @@ impl<Config: endpoint::Config> PacketSpace<Config> for ApplicationSpace<Config> 
             .expect("current path should be set at the start of the round");
         if current_active_path == path_id {
             if self.update_pending_acks(&frame).is_ok() {
+                publisher.on_ack_processed(AckProcessed {
+                    variant: AckVariant::AggregatePending {
+                        count: frame.ack_ranges().count() as u16,
+                    },
+                });
                 return Ok(());
             }
 
-            // TODO: post metrics, failed to aggregate ack
+            publisher.on_ack_processed(AckProcessed {
+                variant: AckVariant::AggregationPendingFailed,
+            });
 
             // Failed to update aggregate ACK info so drain the pending_ack_ranges and
             // process ACKs for the current frame.

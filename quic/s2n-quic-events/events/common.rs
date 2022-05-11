@@ -652,7 +652,9 @@ enum PacketDropReason<'a> {
 
 enum AckVariant {
     AckInsertionFailed,
-    DelayedProcessing,
+    ProcessPending { count: u16 },
+    AggregatePending { count: u16 },
+    AggregationPendingFailed,
 }
 
 enum RetryDiscardReason<'a> {
