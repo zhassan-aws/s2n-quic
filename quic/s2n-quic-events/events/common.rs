@@ -650,6 +650,11 @@ enum PacketDropReason<'a> {
     },
 }
 
+enum AckVariant {
+    AckInsertionFailed,
+    DelayedProcessing,
+}
+
 enum RetryDiscardReason<'a> {
     /// Received a Retry packet with SCID field equal to DCID field.
     ScidEqualsDcid { cid: &'a [u8] },

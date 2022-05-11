@@ -589,6 +589,7 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
                 .expect("active path should be set"),
             path_manager,
         );
+        // TODO: post metrics, processing pending acks
         recovery_manager.on_pending_ack_ranges(
             timestamp,
             pending_ack_ranges,
@@ -762,7 +763,7 @@ impl<Config: endpoint::Config> PacketSpace<Config> for ApplicationSpace<Config> 
                 return Ok(());
             }
 
-            // TODO: post metrics, failed to aggregate acks
+            // TODO: post metrics, failed to aggregate ack
 
             // Failed to update aggregate ACK info so drain the pending_ack_ranges and
             // process ACKs for the current frame.
@@ -991,11 +992,13 @@ impl<Config: endpoint::Config> PacketSpace<Config> for ApplicationSpace<Config> 
         Ok(())
     }
 
-    fn on_processed_packet(
+    fn on_processed_packet<Pub: event::ConnectionPublisher>(
         &mut self,
         processed_packet: ProcessedPacket,
+        publisher: &mut Pub,
     ) -> Result<(), transport::Error> {
-        self.ack_manager.on_processed_packet(&processed_packet);
+        self.ack_manager
+            .on_processed_packet(&processed_packet, publisher);
         self.processed_packet_numbers
             .insert(processed_packet.packet_number)
             .expect("packet number was already checked");

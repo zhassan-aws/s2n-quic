@@ -672,11 +672,13 @@ impl<Config: endpoint::Config> PacketSpace<Config> for InitialSpace<Config> {
         Ok(())
     }
 
-    fn on_processed_packet(
+    fn on_processed_packet<Pub: event::ConnectionPublisher>(
         &mut self,
         processed_packet: ProcessedPacket,
+        publisher: &mut Pub,
     ) -> Result<(), transport::Error> {
-        self.ack_manager.on_processed_packet(&processed_packet);
+        self.ack_manager
+            .on_processed_packet(&processed_packet, publisher);
         self.processed_packet_numbers
             .insert(processed_packet.packet_number)
             .expect("packet number was already checked");

@@ -9,6 +9,7 @@ use crate::{
 use bolero::generator::*;
 use s2n_quic_core::{
     ack, connection, endpoint,
+    event::testing::Publisher,
     frame::{ack_elicitation::AckElicitation, Ack, Frame, Ping},
     inet::DatagramInfo,
     packet::number::PacketNumberSpace,
@@ -71,7 +72,8 @@ impl Endpoint {
             bytes_progressed: 0,
         };
 
-        self.ack_manager.on_processed_packet(&packet);
+        self.ack_manager
+            .on_processed_packet(&packet, &mut Publisher::snapshot());
     }
 
     pub fn send(&mut self, now: Timestamp) -> Option<Packet> {

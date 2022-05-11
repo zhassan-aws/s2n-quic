@@ -44,7 +44,6 @@ impl AckRanges {
         match self.0.pop_min() {
             Some(min) => {
                 if min < pn_range.start() {
-                    // TODO: add metrics for ack ranges being dropped
                     let insert_res = self.0.insert(interval);
                     debug_assert!(
                         insert_res.is_ok(),
@@ -64,6 +63,7 @@ impl AckRanges {
     /// Inserts a packet number; dropping smaller values if needed
     #[inline]
     pub fn insert_packet_number(&mut self, packet_number: PacketNumber) -> Result<(), ()> {
+        // TODO: post metrics for ack ranges being dropped
         self.insert_packet_number_range(PacketNumberRange::new(packet_number, packet_number))
     }
 

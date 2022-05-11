@@ -14,6 +14,10 @@ use crate::{
 use s2n_quic_core::{
     ack,
     counter::{Counter, Saturating},
+    event::{
+        self,
+        builder::{AckProcessed, AckVariant},
+    },
     frame::{ack::EcnCounts, Ack, Ping},
     packet::number::{PacketNumber, PacketNumberSpace},
     time::{timer, Timer, Timestamp},
@@ -188,7 +192,11 @@ impl AckManager {
     }
 
     /// Called after an RX packet has been processed
-    pub fn on_processed_packet(&mut self, processed_packet: &ProcessedPacket) {
+    pub fn on_processed_packet<Pub: event::ConnectionPublisher>(
+        &mut self,
+        processed_packet: &ProcessedPacket,
+        publisher: &mut Pub,
+    ) {
         let packet_number = processed_packet.packet_number;
         let now = processed_packet.datagram.timestamp;
 
@@ -213,6 +221,9 @@ impl AckManager {
         // Most likely, this packet is very old and the contents have already
         // been retransmitted by the peer.
         if self.ack_ranges.insert_packet_number(packet_number).is_err() {
+            publisher.on_ack_processed(AckProcessed {
+                variant: AckVariant::AckInsertionFailed,
+            });
             return;
         }
 
@@ -358,6 +369,7 @@ mod tests {
     use insta::assert_debug_snapshot;
     use s2n_quic_core::{
         ack, connection, endpoint,
+        event::testing::Publisher,
         frame::{ack_elicitation::AckElicitation, ping, Frame},
         inet::{DatagramInfo, ExplicitCongestionNotification},
         time::{Clock, NoopClock},
@@ -384,7 +396,7 @@ mod tests {
         assert!(!manager.transmission_state.is_active());
 
         // Trigger:
-        manager.on_processed_packet(&processed_packet);
+        manager.on_processed_packet(&processed_packet, &mut Publisher::snapshot());
 
         // Expectation:
         assert!(manager.transmission_state.is_active());
@@ -403,7 +415,10 @@ mod tests {
         // Process a packet in an Ect0 datagram
         let pn = PacketNumberSpace::ApplicationData.new_packet_number(VarInt::from_u8(1));
         let datagram = helper_datagram_info(ExplicitCongestionNotification::Ect0);
-        manager.on_processed_packet(&ProcessedPacket::new(pn, &datagram));
+        manager.on_processed_packet(
+            &ProcessedPacket::new(pn, &datagram),
+            &mut Publisher::snapshot(),
+        );
 
         assert_eq!(1, manager.ecn_counts.ect_0_count.as_u64());
         assert_eq!(0, manager.ecn_counts.ect_1_count.as_u64());
@@ -413,8 +428,14 @@ mod tests {
         let pn1 = PacketNumberSpace::ApplicationData.new_packet_number(VarInt::from_u8(2));
         let pn2 = PacketNumberSpace::ApplicationData.new_packet_number(VarInt::from_u8(3));
         let datagram = helper_datagram_info(ExplicitCongestionNotification::Ect1);
-        manager.on_processed_packet(&ProcessedPacket::new(pn1, &datagram));
-        manager.on_processed_packet(&ProcessedPacket::new(pn2, &datagram));
+        manager.on_processed_packet(
+            &ProcessedPacket::new(pn1, &datagram),
+            &mut Publisher::snapshot(),
+        );
+        manager.on_processed_packet(
+            &ProcessedPacket::new(pn2, &datagram),
+            &mut Publisher::snapshot(),
+        );
 
         assert_eq!(1, manager.ecn_counts.ect_0_count.as_u64());
         assert_eq!(2, manager.ecn_counts.ect_1_count.as_u64());
@@ -423,7 +444,10 @@ mod tests {
         // Process a packet in an Ce datagram
         let pn = PacketNumberSpace::ApplicationData.new_packet_number(VarInt::from_u8(4));
         let datagram = helper_datagram_info(ExplicitCongestionNotification::Ce);
-        manager.on_processed_packet(&ProcessedPacket::new(pn, &datagram));
+        manager.on_processed_packet(
+            &ProcessedPacket::new(pn, &datagram),
+            &mut Publisher::snapshot(),
+        );
 
         assert_eq!(1, manager.ecn_counts.ect_0_count.as_u64());
         assert_eq!(2, manager.ecn_counts.ect_1_count.as_u64());
@@ -432,7 +456,10 @@ mod tests {
         // Process a packet in a NotEct datagram
         let pn = PacketNumberSpace::ApplicationData.new_packet_number(VarInt::from_u8(5));
         let datagram = helper_datagram_info(ExplicitCongestionNotification::NotEct);
-        manager.on_processed_packet(&ProcessedPacket::new(pn, &datagram));
+        manager.on_processed_packet(
+            &ProcessedPacket::new(pn, &datagram),
+            &mut Publisher::snapshot(),
+        );
 
         assert_eq!(1, manager.ecn_counts.ect_0_count.as_u64());
         assert_eq!(2, manager.ecn_counts.ect_1_count.as_u64());
