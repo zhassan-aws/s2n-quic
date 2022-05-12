@@ -585,17 +585,20 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
             "pending_ack_ranges should be non-empty since connection indicated ack interest"
         );
 
+        let current_path_id = self
+            .pending_ack_ranges
+            .current_active_path
+            .expect("active path should be set");
         let (recovery_manager, mut context, pending_ack_ranges) = self.recovery(
             handshake_status,
             local_id_registry,
-            self.pending_ack_ranges
-                .current_active_path
-                .expect("active path should be set"),
+            current_path_id,
             path_manager,
         );
         publisher.on_ack_processed(AckProcessed {
             action: AckActions::ProcessPending {
                 count: pending_ack_ranges.count() as u16,
+                path_id: current_path_id.into_event(),
             },
         });
         recovery_manager.on_pending_ack_ranges(
@@ -771,13 +774,16 @@ impl<Config: endpoint::Config> PacketSpace<Config> for ApplicationSpace<Config> 
                 publisher.on_ack_processed(AckProcessed {
                     action: AckActions::AggregatePending {
                         count: frame.ack_ranges().count() as u16,
+                        path_id: path_id.into_event(),
                     },
                 });
                 return Ok(());
             }
 
             publisher.on_ack_processed(AckProcessed {
-                action: AckActions::AggregationPendingFailed,
+                action: AckActions::AggregationPendingFailed {
+                    path_id: path_id.into_event(),
+                },
             });
 
             // Failed to update aggregate ACK info so drain the pending_ack_ranges and
@@ -1010,10 +1016,11 @@ impl<Config: endpoint::Config> PacketSpace<Config> for ApplicationSpace<Config> 
     fn on_processed_packet<Pub: event::ConnectionPublisher>(
         &mut self,
         processed_packet: ProcessedPacket,
+        path_id: path::Id,
         publisher: &mut Pub,
     ) -> Result<(), transport::Error> {
         self.ack_manager
-            .on_processed_packet(&processed_packet, publisher);
+            .on_processed_packet(&processed_packet, path_id, publisher);
         self.processed_packet_numbers
             .insert(processed_packet.packet_number)
             .expect("packet number was already checked");

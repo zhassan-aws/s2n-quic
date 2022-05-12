@@ -687,6 +687,7 @@ pub trait PacketSpace<Config: endpoint::Config> {
     fn on_processed_packet<Pub: event::ConnectionPublisher>(
         &mut self,
         processed_packet: ProcessedPacket,
+        path_id: path::Id,
         publisher: &mut Pub,
     ) -> Result<(), transport::Error>;
 
@@ -931,7 +932,7 @@ pub trait PacketSpace<Config: endpoint::Config> {
         //# receipt by sending one or more ACK frames containing the packet
         //# number of the received packet.
 
-        self.on_processed_packet(processed_packet, publisher)?;
+        self.on_processed_packet(processed_packet, path_id, publisher)?;
 
         Ok(processed_packet)
     }

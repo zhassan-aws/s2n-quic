@@ -13,6 +13,7 @@ use s2n_quic_core::{
     frame::{ack_elicitation::AckElicitation, Ack, Frame, Ping},
     inet::DatagramInfo,
     packet::number::PacketNumberSpace,
+    path,
     time::{timer::Provider as _, Timestamp},
 };
 
@@ -72,8 +73,11 @@ impl Endpoint {
             bytes_progressed: 0,
         };
 
-        self.ack_manager
-            .on_processed_packet(&packet, &mut Publisher::snapshot());
+        self.ack_manager.on_processed_packet(
+            &packet,
+            path::Id::test_id(),
+            &mut Publisher::snapshot(),
+        );
     }
 
     pub fn send(&mut self, now: Timestamp) -> Option<Packet> {

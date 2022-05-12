@@ -311,14 +311,17 @@ pub mod api {
     #[non_exhaustive]
     pub enum AckActions {
         #[non_exhaustive]
-        #[doc = " Ack range was dropped"]
-        RxInsertionFailed { number: u64 },
+        #[doc = " A received Ack packet was dropped due to space constrainst"]
+        RxInsertionFailed { number: u64, path_id: u64 },
         #[non_exhaustive]
-        ProcessPending { count: u16 },
+        #[doc = " Acks were aggregated for delayed processing"]
+        AggregatePending { count: u16, path_id: u64 },
         #[non_exhaustive]
-        AggregatePending { count: u16 },
+        #[doc = " Pending Acks were processed"]
+        ProcessPending { count: u16, path_id: u64 },
         #[non_exhaustive]
-        AggregationPendingFailed {},
+        #[doc = " Acks aggregation failed failed due to space constrainst"]
+        AggregationPendingFailed { path_id: u64 },
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
@@ -2440,33 +2443,35 @@ pub mod builder {
     }
     #[derive(Clone, Debug)]
     pub enum AckActions {
-        #[doc = " Ack range was dropped"]
-        RxInsertionFailed {
-            number: u64,
-        },
-        ProcessPending {
-            count: u16,
-        },
-        AggregatePending {
-            count: u16,
-        },
-        AggregationPendingFailed,
+        #[doc = " A received Ack packet was dropped due to space constrainst"]
+        RxInsertionFailed { number: u64, path_id: u64 },
+        #[doc = " Acks were aggregated for delayed processing"]
+        AggregatePending { count: u16, path_id: u64 },
+        #[doc = " Pending Acks were processed"]
+        ProcessPending { count: u16, path_id: u64 },
+        #[doc = " Acks aggregation failed failed due to space constrainst"]
+        AggregationPendingFailed { path_id: u64 },
     }
     impl IntoEvent<api::AckActions> for AckActions {
         #[inline]
         fn into_event(self) -> api::AckActions {
             use api::AckActions::*;
             match self {
-                Self::RxInsertionFailed { number } => RxInsertionFailed {
+                Self::RxInsertionFailed { number, path_id } => RxInsertionFailed {
                     number: number.into_event(),
+                    path_id: path_id.into_event(),
                 },
-                Self::ProcessPending { count } => ProcessPending {
+                Self::AggregatePending { count, path_id } => AggregatePending {
                     count: count.into_event(),
+                    path_id: path_id.into_event(),
                 },
-                Self::AggregatePending { count } => AggregatePending {
+                Self::ProcessPending { count, path_id } => ProcessPending {
                     count: count.into_event(),
+                    path_id: path_id.into_event(),
                 },
-                Self::AggregationPendingFailed => AggregationPendingFailed {},
+                Self::AggregationPendingFailed { path_id } => AggregationPendingFailed {
+                    path_id: path_id.into_event(),
+                },
             }
         }
     }
