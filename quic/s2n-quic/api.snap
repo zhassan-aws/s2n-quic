@@ -1966,6 +1966,12 @@ struct s2n_quic::provider::event::disabled::Subscriber implements trait:
   impl std::panic::UnwindSafe for s2n_quic::provider::event::disabled::Subscriber
 
 module s2n_quic::provider::event::events exports struct:
+  s2n_quic::provider::event::events::AckProcessed
+
+module s2n_quic::provider::event::events exports enum:
+  s2n_quic::provider::event::events::AckVariant
+
+module s2n_quic::provider::event::events exports struct:
   s2n_quic::provider::event::events::ActivePathUpdated
 
 module s2n_quic::provider::event::events exports struct:
@@ -2177,6 +2183,89 @@ module s2n_quic::provider::event::events exports struct:
 
 module s2n_quic::provider::event::events exports struct:
   s2n_quic::provider::event::events::VersionInformation
+
+struct s2n_quic::provider::event::events::AckProcessed is non-exhaustive
+
+struct s2n_quic::provider::event::events::AckProcessed implements trait:
+  impl core::clone::Clone for s2n_quic::provider::event::events::AckProcessed
+
+struct s2n_quic::provider::event::events::AckProcessed implements trait:
+  impl core::fmt::Debug for s2n_quic::provider::event::events::AckProcessed
+
+struct s2n_quic::provider::event::events::AckProcessed implements trait:
+  impl core::marker::Send for s2n_quic::provider::event::events::AckProcessed
+
+struct s2n_quic::provider::event::events::AckProcessed implements trait:
+  impl core::marker::Sync for s2n_quic::provider::event::events::AckProcessed
+
+struct s2n_quic::provider::event::events::AckProcessed implements trait:
+  impl core::marker::Unpin for s2n_quic::provider::event::events::AckProcessed
+
+struct s2n_quic::provider::event::events::AckProcessed implements trait:
+  impl s2n_quic::provider::event::Event for s2n_quic::provider::event::events::AckProcessed
+
+struct s2n_quic::provider::event::events::AckProcessed implements trait:
+  impl std::panic::RefUnwindSafe for s2n_quic::provider::event::events::AckProcessed
+
+struct s2n_quic::provider::event::events::AckProcessed implements trait:
+  impl std::panic::UnwindSafe for s2n_quic::provider::event::events::AckProcessed
+
+struct s2n_quic::provider::event::events::AckProcessed exports constant:
+  pub const NAME: &'static str
+
+struct s2n_quic::provider::event::events::AckProcessed exports field:
+  variant: s2n_quic::provider::event::events::AckVariant
+
+enum s2n_quic::provider::event::events::AckVariant is non-exhaustive
+
+enum s2n_quic::provider::event::events::AckVariant exports variant:
+  AggregatePending
+
+enum s2n_quic::provider::event::events::AckVariant exports variant:
+  AggregationPendingFailed
+
+enum s2n_quic::provider::event::events::AckVariant exports variant:
+  ProcessPending
+
+enum s2n_quic::provider::event::events::AckVariant exports variant:
+  RxInsertionFailed
+
+enum s2n_quic::provider::event::events::AckVariant implements trait:
+  impl core::clone::Clone for s2n_quic::provider::event::events::AckVariant
+
+enum s2n_quic::provider::event::events::AckVariant implements trait:
+  impl core::fmt::Debug for s2n_quic::provider::event::events::AckVariant
+
+enum s2n_quic::provider::event::events::AckVariant implements trait:
+  impl core::marker::Send for s2n_quic::provider::event::events::AckVariant
+
+enum s2n_quic::provider::event::events::AckVariant implements trait:
+  impl core::marker::Sync for s2n_quic::provider::event::events::AckVariant
+
+enum s2n_quic::provider::event::events::AckVariant implements trait:
+  impl core::marker::Unpin for s2n_quic::provider::event::events::AckVariant
+
+enum s2n_quic::provider::event::events::AckVariant implements trait:
+  impl std::panic::RefUnwindSafe for s2n_quic::provider::event::events::AckVariant
+
+enum s2n_quic::provider::event::events::AckVariant implements trait:
+  impl std::panic::UnwindSafe for s2n_quic::provider::event::events::AckVariant
+
+variant s2n_quic::provider::event::events::AckVariant::AggregatePending is non-exhaustive
+
+variant s2n_quic::provider::event::events::AckVariant::AggregatePending exports field:
+  count:
+  u16
+
+variant s2n_quic::provider::event::events::AckVariant::AggregationPendingFailed is non-exhaustive
+
+variant s2n_quic::provider::event::events::AckVariant::ProcessPending is non-exhaustive
+
+variant s2n_quic::provider::event::events::AckVariant::ProcessPending exports field:
+  count:
+  u16
+
+variant s2n_quic::provider::event::events::AckVariant::RxInsertionFailed is non-exhaustive
 
 struct s2n_quic::provider::event::events::ActivePathUpdated is non-exhaustive
 

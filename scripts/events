@@ -2,4 +2,4 @@
 
 cargo +nightly run --bin s2n-quic-events
 # since events are exposed in the public api, we need to update the diff
-INSTA_UPDATE=always ./scripts/docdiff
+# INSTA_UPDATE=always ./scripts/docdiff

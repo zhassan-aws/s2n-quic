@@ -16,7 +16,8 @@ use s2n_quic_core::{
     counter::{Counter, Saturating},
     event::{
         self,
-        builder::{AckProcessed, AckVariant},
+        builder::{AckActions, AckProcessed},
+        IntoEvent as _,
     },
     frame::{ack::EcnCounts, Ack, Ping},
     packet::number::{PacketNumber, PacketNumberSpace},
@@ -222,7 +223,9 @@ impl AckManager {
         // been retransmitted by the peer.
         if self.ack_ranges.insert_packet_number(packet_number).is_err() {
             publisher.on_ack_processed(AckProcessed {
-                variant: AckVariant::AckInsertionFailed,
+                action: AckActions::RxInsertionFailed {
+                    number: packet_number.into_event(),
+                },
             });
             return;
         }

@@ -309,9 +309,10 @@ pub mod api {
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
-    pub enum AckVariant {
+    pub enum AckActions {
         #[non_exhaustive]
-        AckInsertionFailed {},
+        #[doc = " Ack range was dropped"]
+        RxInsertionFailed { number: u64 },
         #[non_exhaustive]
         ProcessPending { count: u16 },
         #[non_exhaustive]
@@ -542,7 +543,7 @@ pub mod api {
     #[non_exhaustive]
     #[doc = " Events related to ACK processing"]
     pub struct AckProcessed {
-        pub variant: AckVariant,
+        pub action: AckActions,
     }
     impl Event for AckProcessed {
         const NAME: &'static str = "recovery:ack_processed";
@@ -1209,15 +1210,15 @@ pub mod api {
             use builder::PacketHeader;
             match packet_number.space() {
                 PacketNumberSpace::Initial => PacketHeader::Initial {
-                    number: packet_number.as_u64(),
+                    number: packet_number.into_event(),
                     version,
                 },
                 PacketNumberSpace::Handshake => PacketHeader::Handshake {
-                    number: packet_number.as_u64(),
+                    number: packet_number.into_event(),
                     version,
                 },
                 PacketNumberSpace::ApplicationData => PacketHeader::OneRtt {
-                    number: packet_number.as_u64(),
+                    number: packet_number.into_event(),
                 },
             }
         }
@@ -1457,8 +1458,8 @@ pub mod tracing {
             event: &api::AckProcessed,
         ) {
             let id = context.id();
-            let api::AckProcessed { variant } = event;
-            tracing :: event ! (target : "ack_processed" , parent : id , tracing :: Level :: DEBUG , variant = tracing :: field :: debug (variant));
+            let api::AckProcessed { action } = event;
+            tracing :: event ! (target : "ack_processed" , parent : id , tracing :: Level :: DEBUG , action = tracing :: field :: debug (action));
         }
         #[inline]
         fn on_packet_dropped(
@@ -2438,18 +2439,27 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
-    pub enum AckVariant {
-        AckInsertionFailed,
-        ProcessPending { count: u16 },
-        AggregatePending { count: u16 },
+    pub enum AckActions {
+        #[doc = " Ack range was dropped"]
+        RxInsertionFailed {
+            number: u64,
+        },
+        ProcessPending {
+            count: u16,
+        },
+        AggregatePending {
+            count: u16,
+        },
         AggregationPendingFailed,
     }
-    impl IntoEvent<api::AckVariant> for AckVariant {
+    impl IntoEvent<api::AckActions> for AckActions {
         #[inline]
-        fn into_event(self) -> api::AckVariant {
-            use api::AckVariant::*;
+        fn into_event(self) -> api::AckActions {
+            use api::AckActions::*;
             match self {
-                Self::AckInsertionFailed => AckInsertionFailed {},
+                Self::RxInsertionFailed { number } => RxInsertionFailed {
+                    number: number.into_event(),
+                },
                 Self::ProcessPending { count } => ProcessPending {
                     count: count.into_event(),
                 },
@@ -2831,14 +2841,14 @@ pub mod builder {
     #[derive(Clone, Debug)]
     #[doc = " Events related to ACK processing"]
     pub struct AckProcessed {
-        pub variant: AckVariant,
+        pub action: AckActions,
     }
     impl IntoEvent<api::AckProcessed> for AckProcessed {
         #[inline]
         fn into_event(self) -> api::AckProcessed {
-            let AckProcessed { variant } = self;
+            let AckProcessed { action } = self;
             api::AckProcessed {
-                variant: variant.into_event(),
+                action: action.into_event(),
             }
         }
     }

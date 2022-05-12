@@ -21,7 +21,7 @@ use s2n_quic_core::{
     datagram::Endpoint,
     event::{
         self,
-        builder::{AckProcessed, AckVariant},
+        builder::{AckActions, AckProcessed},
         ConnectionPublisher as _, IntoEvent,
     },
     frame::{
@@ -594,7 +594,7 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
             path_manager,
         );
         publisher.on_ack_processed(AckProcessed {
-            variant: AckVariant::ProcessPending {
+            action: AckActions::ProcessPending {
                 count: pending_ack_ranges.count() as u16,
             },
         });
@@ -769,7 +769,7 @@ impl<Config: endpoint::Config> PacketSpace<Config> for ApplicationSpace<Config> 
         if current_active_path == path_id {
             if self.update_pending_acks(&frame).is_ok() {
                 publisher.on_ack_processed(AckProcessed {
-                    variant: AckVariant::AggregatePending {
+                    action: AckActions::AggregatePending {
                         count: frame.ack_ranges().count() as u16,
                     },
                 });
@@ -777,7 +777,7 @@ impl<Config: endpoint::Config> PacketSpace<Config> for ApplicationSpace<Config> 
             }
 
             publisher.on_ack_processed(AckProcessed {
-                variant: AckVariant::AggregationPendingFailed,
+                action: AckActions::AggregationPendingFailed,
             });
 
             // Failed to update aggregate ACK info so drain the pending_ack_ranges and

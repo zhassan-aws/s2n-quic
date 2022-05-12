@@ -502,15 +502,15 @@ impl builder::PacketHeader {
 
         match packet_number.space() {
             PacketNumberSpace::Initial => PacketHeader::Initial {
-                number: packet_number.as_u64(),
+                number: packet_number.into_event(),
                 version,
             },
             PacketNumberSpace::Handshake => PacketHeader::Handshake {
-                number: packet_number.as_u64(),
+                number: packet_number.into_event(),
                 version,
             },
             PacketNumberSpace::ApplicationData => PacketHeader::OneRtt {
-                number: packet_number.as_u64(),
+                number: packet_number.into_event(),
             },
         }
     }
@@ -650,10 +650,14 @@ enum PacketDropReason<'a> {
     },
 }
 
-enum AckVariant {
-    AckInsertionFailed,
-    ProcessPending { count: u16 },
+enum AckActions {
+    /// A received Ack packet was dropped due to space constrainst
+    RxInsertionFailed { number: u64 },
+    /// Acks were aggregated for delayed processing
     AggregatePending { count: u16 },
+    /// Pending Acks were processed
+    ProcessPending { count: u16 },
+    /// Acks aggregation failed failed due to space constrainst
     AggregationPendingFailed,
 }
 
