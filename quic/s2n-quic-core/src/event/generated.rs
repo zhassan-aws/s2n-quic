@@ -311,10 +311,22 @@ pub mod api {
     #[non_exhaustive]
     pub enum AckAction {
         #[non_exhaustive]
-        #[doc = " A received Ack frame failed insertion due to space constraint"]
+        #[doc = " Ack for a received packet was dropped due to space constraint"]
+        #[doc = ""]
+        #[doc = " For the purpose of Acks, RX packets are stored as packet_number ranges;"]
+        #[doc = " only lower and upper bounds are stored instead of individual packet_numbers."]
+        #[doc = " Ranges are merged when possible so only disjointed ranges are stored."]
+        #[doc = ""]
+        #[doc = " When at `capacity`, the lowest packet_number range is dropped."]
         RxFailed {
-            #[doc = " the packet number which was not inserted"]
+            #[doc = " The packet number which was dropped"]
             number: u64,
+            #[doc = " The number of disjoint ranges the data structure can store"]
+            capacity: u16,
+            #[doc = " The min value store"]
+            min: u64,
+            #[doc = " The max value stored"]
+            max: u64,
         },
         #[non_exhaustive]
         #[doc = " Acks were aggregated for delayed processing"]
@@ -2453,10 +2465,22 @@ pub mod builder {
     }
     #[derive(Clone, Debug)]
     pub enum AckAction {
-        #[doc = " A received Ack frame failed insertion due to space constraint"]
+        #[doc = " Ack for a received packet was dropped due to space constraint"]
+        #[doc = ""]
+        #[doc = " For the purpose of Acks, RX packets are stored as packet_number ranges;"]
+        #[doc = " only lower and upper bounds are stored instead of individual packet_numbers."]
+        #[doc = " Ranges are merged when possible so only disjointed ranges are stored."]
+        #[doc = ""]
+        #[doc = " When at `capacity`, the lowest packet_number range is dropped."]
         RxFailed {
-            #[doc = " the packet number which was not inserted"]
+            #[doc = " The packet number which was dropped"]
             number: u64,
+            #[doc = " The number of disjoint ranges the data structure can store"]
+            capacity: u16,
+            #[doc = " The min value store"]
+            min: u64,
+            #[doc = " The max value stored"]
+            max: u64,
         },
         #[doc = " Acks were aggregated for delayed processing"]
         AggregatePending {
@@ -2476,8 +2500,16 @@ pub mod builder {
         fn into_event(self) -> api::AckAction {
             use api::AckAction::*;
             match self {
-                Self::RxFailed { number } => RxFailed {
+                Self::RxFailed {
+                    number,
+                    capacity,
+                    min,
+                    max,
+                } => RxFailed {
                     number: number.into_event(),
+                    capacity: capacity.into_event(),
+                    min: min.into_event(),
+                    max: max.into_event(),
                 },
                 Self::AggregatePending { count } => AggregatePending {
                     count: count.into_event(),

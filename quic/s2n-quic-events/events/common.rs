@@ -651,10 +651,22 @@ enum PacketDropReason<'a> {
 }
 
 enum AckAction {
-    /// A received Ack range was dropped due to space constraint
+    /// Ack for a received packet was dropped due to space constraint
+    ///
+    /// For the purpose of Acks, RX packets are stored as packet_number ranges;
+    /// only lower and upper bounds are stored instead of individual packet_numbers.
+    /// Ranges are merged when possible so only disjointed ranges are stored.
+    ///
+    /// When at `capacity`, the lowest packet_number range is dropped.
     RxFailed {
-        /// the packet number which was not acknowledged
+        /// The packet number which was dropped
         number: u64,
+        /// The number of disjoint ranges the data structure can store
+        capacity: u16,
+        /// The min value store
+        min: u64,
+        /// The max value stored
+        max: u64,
     },
     /// Acks were aggregated for delayed processing
     AggregatePending {

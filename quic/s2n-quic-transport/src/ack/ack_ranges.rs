@@ -14,6 +14,14 @@ use s2n_quic_core::{
     varint::VarInt,
 };
 
+enum AckRangeError {
+    CurrentPacketDropped,
+    LowestPacketDropped {
+        min: PacketNumber,
+        max: PacketNumber,
+    },
+}
+
 #[derive(Clone, Debug)]
 pub struct AckRanges(IntervalSet<PacketNumber>);
 

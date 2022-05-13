@@ -226,6 +226,17 @@ impl AckManager {
             publisher.on_ack_processed(AckProcessed {
                 action: AckAction::RxFailed {
                     number: packet_number.into_event(),
+                    capacity: self.ack_ranges.intervals().count() as u16,
+                    min: self
+                        .ack_ranges
+                        .min_value()
+                        .expect("should be non empty")
+                        .into_event(),
+                    max: self
+                        .ack_ranges
+                        .max_value()
+                        .expect("should be non empty")
+                        .into_event(),
                 },
                 path,
             });
