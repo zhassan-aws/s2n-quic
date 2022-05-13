@@ -4,7 +4,7 @@
 use crate::{
     ack::{
         ack_eliciting_transmission::{AckElicitingTransmission, AckElicitingTransmissionSet},
-        ack_ranges::AckRanges,
+        ack_ranges::{AckRanges, AckRangesError},
         ack_transmission_state::AckTransmissionState,
     },
     contexts::WriteContext,
@@ -222,17 +222,23 @@ impl AckManager {
         //
         // Most likely, this packet is very old and the contents have already
         // been retransmitted by the peer.
-        if self.ack_ranges.insert_packet_number(packet_number).is_err() {
+        if let Err(err) = self.ack_ranges.insert_packet_number(packet_number) {
+            let (range_start, range_end) = match err {
+                AckRangesError::RangeInsertionFailed { min, max }
+                | AckRangesError::LowestRangeDropped { min, max } => (min, max),
+            };
+
             publisher.on_ack_processed(AckProcessed {
-                action: AckAction::RxFailed {
-                    number: packet_number.into_event(),
+                action: AckAction::RxAckRangeDropped {
+                    range_start: range_start.into_event(),
+                    range_end: range_end.into_event(),
                     capacity: self.ack_ranges.intervals().count() as u16,
-                    min: self
+                    stored_min: self
                         .ack_ranges
                         .min_value()
                         .expect("should be non empty")
                         .into_event(),
-                    max: self
+                    stored_max: self
                         .ack_ranges
                         .max_value()
                         .expect("should be non empty")
@@ -240,6 +246,7 @@ impl AckManager {
                 },
                 path,
             });
+
             return;
         }
 

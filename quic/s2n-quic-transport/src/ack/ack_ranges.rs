@@ -14,10 +14,13 @@ use s2n_quic_core::{
     varint::VarInt,
 };
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum AckRangesError {
-    PacketInsertionFailed,
-    LowestPacketDropped {
+    RangeInsertionFailed {
+        min: PacketNumber,
+        max: PacketNumber,
+    },
+    LowestRangeDropped {
         min: PacketNumber,
         max: PacketNumber,
     },
@@ -61,21 +64,30 @@ impl AckRanges {
                         insert_res.is_ok(),
                         "min range was removed, so it should be possible to insert another range",
                     );
-                    insert_res.map_err(|_| AckRangesError::PacketInsertionFailed)?;
+                    insert_res.map_err(|_| AckRangesError::RangeInsertionFailed {
+                        min: pn_range.start(),
+                        max: pn_range.end(),
+                    })?;
 
-                    Err(AckRangesError::LowestPacketDropped {
+                    Err(AckRangesError::LowestRangeDropped {
                         min: min.start,
                         max: min.end,
                     })
                 } else {
                     // new value is smaller than min so inset it back in the front
                     let _ = self.0.insert_front(min);
-                    Err(AckRangesError::PacketInsertionFailed)
+                    Err(AckRangesError::RangeInsertionFailed {
+                        min: pn_range.start(),
+                        max: pn_range.end(),
+                    })
                 }
             }
             None => {
                 debug_assert!(false, "IntervalSet should have capacity and entries");
-                Err(AckRangesError::PacketInsertionFailed)
+                Err(AckRangesError::RangeInsertionFailed {
+                    min: pn_range.start(),
+                    max: pn_range.end(),
+                })
             }
         }
     }
@@ -164,7 +176,14 @@ mod tests {
 
         // insert a new packet number gap
         let pn_d = packet_numbers.next().unwrap();
-        assert!(ack_ranges.insert_packet_number(pn_d).is_ok());
+        // assert!(ack_ranges.insert_packet_number(pn_d).is_ok());
+        assert_eq!(
+            ack_ranges.insert_packet_number(pn_d).err().unwrap(),
+            AckRangesError::LowestRangeDropped {
+                min: pn_a,
+                max: pn_a
+            }
+        );
 
         // ensure the previous smaller packet number was dropped
         assert_eq!(ack_ranges.interval_len(), 3);

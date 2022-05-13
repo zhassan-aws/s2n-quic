@@ -311,22 +311,25 @@ pub mod api {
     #[non_exhaustive]
     pub enum AckAction {
         #[non_exhaustive]
-        #[doc = " Ack for a received packet was dropped due to space constraint"]
+        #[doc = " Ack range for received packets was dropped due to space constraint"]
         #[doc = ""]
-        #[doc = " For the purpose of Acks, RX packets are stored as packet_number ranges;"]
-        #[doc = " only lower and upper bounds are stored instead of individual packet_numbers."]
-        #[doc = " Ranges are merged when possible so only disjointed ranges are stored."]
+        #[doc = " For the purpose of processing Acks, RX packet numbers are stored as"]
+        #[doc = " packet_number ranges in an IntervalSet; only lower and upper bounds"]
+        #[doc = " are stored instead of individual packet_numbers. Ranges are merged"]
+        #[doc = " when possible so only disjointed ranges are stored."]
         #[doc = ""]
         #[doc = " When at `capacity`, the lowest packet_number range is dropped."]
-        RxFailed {
-            #[doc = " The packet number which was dropped"]
-            number: u64,
+        RxAckRangeDropped {
+            #[doc = " The packet number range which was dropped"]
+            range_start: u64,
+            #[doc = " The packet number range which was dropped"]
+            range_end: u64,
             #[doc = " The number of disjoint ranges the data structure can store"]
             capacity: u16,
-            #[doc = " The min value store"]
-            min: u64,
-            #[doc = " The max value stored"]
-            max: u64,
+            #[doc = " The min value store in the IntervalSet"]
+            stored_min: u64,
+            #[doc = " The max value stored in the IntervalSet"]
+            stored_max: u64,
         },
         #[non_exhaustive]
         #[doc = " Acks were aggregated for delayed processing"]
@@ -2465,22 +2468,25 @@ pub mod builder {
     }
     #[derive(Clone, Debug)]
     pub enum AckAction {
-        #[doc = " Ack for a received packet was dropped due to space constraint"]
+        #[doc = " Ack range for received packets was dropped due to space constraint"]
         #[doc = ""]
-        #[doc = " For the purpose of Acks, RX packets are stored as packet_number ranges;"]
-        #[doc = " only lower and upper bounds are stored instead of individual packet_numbers."]
-        #[doc = " Ranges are merged when possible so only disjointed ranges are stored."]
+        #[doc = " For the purpose of processing Acks, RX packet numbers are stored as"]
+        #[doc = " packet_number ranges in an IntervalSet; only lower and upper bounds"]
+        #[doc = " are stored instead of individual packet_numbers. Ranges are merged"]
+        #[doc = " when possible so only disjointed ranges are stored."]
         #[doc = ""]
         #[doc = " When at `capacity`, the lowest packet_number range is dropped."]
-        RxFailed {
-            #[doc = " The packet number which was dropped"]
-            number: u64,
+        RxAckRangeDropped {
+            #[doc = " The packet number range which was dropped"]
+            range_start: u64,
+            #[doc = " The packet number range which was dropped"]
+            range_end: u64,
             #[doc = " The number of disjoint ranges the data structure can store"]
             capacity: u16,
-            #[doc = " The min value store"]
-            min: u64,
-            #[doc = " The max value stored"]
-            max: u64,
+            #[doc = " The min value store in the IntervalSet"]
+            stored_min: u64,
+            #[doc = " The max value stored in the IntervalSet"]
+            stored_max: u64,
         },
         #[doc = " Acks were aggregated for delayed processing"]
         AggregatePending {
@@ -2500,16 +2506,18 @@ pub mod builder {
         fn into_event(self) -> api::AckAction {
             use api::AckAction::*;
             match self {
-                Self::RxFailed {
-                    number,
+                Self::RxAckRangeDropped {
+                    range_start,
+                    range_end,
                     capacity,
-                    min,
-                    max,
-                } => RxFailed {
-                    number: number.into_event(),
+                    stored_min,
+                    stored_max,
+                } => RxAckRangeDropped {
+                    range_start: range_start.into_event(),
+                    range_end: range_end.into_event(),
                     capacity: capacity.into_event(),
-                    min: min.into_event(),
-                    max: max.into_event(),
+                    stored_min: stored_min.into_event(),
+                    stored_max: stored_max.into_event(),
                 },
                 Self::AggregatePending { count } => AggregatePending {
                     count: count.into_event(),
