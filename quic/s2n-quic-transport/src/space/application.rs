@@ -21,7 +21,7 @@ use s2n_quic_core::{
     datagram::Endpoint,
     event::{
         self,
-        builder::{AckActions, AckProcessed},
+        builder::{AckAction, AckProcessed},
         ConnectionPublisher as _, IntoEvent,
     },
     frame::{
@@ -596,7 +596,7 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
             path_manager,
         );
         publisher.on_ack_processed(AckProcessed {
-            action: AckActions::ProcessPending {
+            action: AckAction::ProcessPending {
                 count: pending_ack_ranges.count() as u16,
                 path_id: current_path_id.into_event(),
             },
@@ -772,7 +772,7 @@ impl<Config: endpoint::Config> PacketSpace<Config> for ApplicationSpace<Config> 
         if current_active_path == path_id {
             if self.update_pending_acks(&frame).is_ok() {
                 publisher.on_ack_processed(AckProcessed {
-                    action: AckActions::AggregatePending {
+                    action: AckAction::AggregatePending {
                         count: frame.ack_ranges().count() as u16,
                         path_id: path_id.into_event(),
                     },
@@ -781,7 +781,7 @@ impl<Config: endpoint::Config> PacketSpace<Config> for ApplicationSpace<Config> 
             }
 
             publisher.on_ack_processed(AckProcessed {
-                action: AckActions::AggregationPendingFailed {
+                action: AckAction::AggregationPendingFailed {
                     path_id: path_id.into_event(),
                 },
             });
@@ -1017,10 +1017,14 @@ impl<Config: endpoint::Config> PacketSpace<Config> for ApplicationSpace<Config> 
         &mut self,
         processed_packet: ProcessedPacket,
         path_id: path::Id,
+        path: &Path<Config>,
         publisher: &mut Pub,
     ) -> Result<(), transport::Error> {
-        self.ack_manager
-            .on_processed_packet(&processed_packet, path_id, publisher);
+        self.ack_manager.on_processed_packet(
+            &processed_packet,
+            path_event!(path, path_id),
+            publisher,
+        );
         self.processed_packet_numbers
             .insert(processed_packet.packet_number)
             .expect("packet number was already checked");

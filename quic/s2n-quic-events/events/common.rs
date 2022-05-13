@@ -650,14 +650,14 @@ enum PacketDropReason<'a> {
     },
 }
 
-enum AckActions {
-    /// A received Ack packet was dropped due to space constrainst
-    RxInsertionFailed { number: u64, path_id: u64 },
+enum AckAction<'a> {
+    /// A received Ack packet was dropped due to space constraint
+    RxInsertionFailed { number: u64, path: Path<'a> },
     /// Acks were aggregated for delayed processing
     AggregatePending { count: u16, path_id: u64 },
     /// Pending Acks were processed
     ProcessPending { count: u16, path_id: u64 },
-    /// Acks aggregation failed failed due to space constrainst
+    /// Acks aggregation failed failed due to space constraint
     AggregationPendingFailed { path_id: u64 },
 }
 

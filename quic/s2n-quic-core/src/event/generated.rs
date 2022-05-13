@@ -309,10 +309,10 @@ pub mod api {
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
-    pub enum AckActions {
+    pub enum AckAction<'a> {
         #[non_exhaustive]
-        #[doc = " A received Ack packet was dropped due to space constrainst"]
-        RxInsertionFailed { number: u64, path_id: u64 },
+        #[doc = " A received Ack packet was dropped due to space constraint"]
+        RxInsertionFailed { number: u64, path: Path<'a> },
         #[non_exhaustive]
         #[doc = " Acks were aggregated for delayed processing"]
         AggregatePending { count: u16, path_id: u64 },
@@ -320,7 +320,7 @@ pub mod api {
         #[doc = " Pending Acks were processed"]
         ProcessPending { count: u16, path_id: u64 },
         #[non_exhaustive]
-        #[doc = " Acks aggregation failed failed due to space constrainst"]
+        #[doc = " Acks aggregation failed failed due to space constraint"]
         AggregationPendingFailed { path_id: u64 },
     }
     #[derive(Clone, Debug)]
@@ -545,10 +545,10 @@ pub mod api {
     #[derive(Clone, Debug)]
     #[non_exhaustive]
     #[doc = " Events related to ACK processing"]
-    pub struct AckProcessed {
-        pub action: AckActions,
+    pub struct AckProcessed<'a> {
+        pub action: AckAction<'a>,
     }
-    impl Event for AckProcessed {
+    impl<'a> Event for AckProcessed<'a> {
         const NAME: &'static str = "recovery:ack_processed";
     }
     #[derive(Clone, Debug)]
@@ -2442,24 +2442,24 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
-    pub enum AckActions {
-        #[doc = " A received Ack packet was dropped due to space constrainst"]
-        RxInsertionFailed { number: u64, path_id: u64 },
+    pub enum AckAction<'a> {
+        #[doc = " A received Ack packet was dropped due to space constraint"]
+        RxInsertionFailed { number: u64, path: Path<'a> },
         #[doc = " Acks were aggregated for delayed processing"]
         AggregatePending { count: u16, path_id: u64 },
         #[doc = " Pending Acks were processed"]
         ProcessPending { count: u16, path_id: u64 },
-        #[doc = " Acks aggregation failed failed due to space constrainst"]
+        #[doc = " Acks aggregation failed failed due to space constraint"]
         AggregationPendingFailed { path_id: u64 },
     }
-    impl IntoEvent<api::AckActions> for AckActions {
+    impl<'a> IntoEvent<api::AckAction<'a>> for AckAction<'a> {
         #[inline]
-        fn into_event(self) -> api::AckActions {
-            use api::AckActions::*;
+        fn into_event(self) -> api::AckAction<'a> {
+            use api::AckAction::*;
             match self {
-                Self::RxInsertionFailed { number, path_id } => RxInsertionFailed {
+                Self::RxInsertionFailed { number, path } => RxInsertionFailed {
                     number: number.into_event(),
-                    path_id: path_id.into_event(),
+                    path: path.into_event(),
                 },
                 Self::AggregatePending { count, path_id } => AggregatePending {
                     count: count.into_event(),
@@ -2845,12 +2845,12 @@ pub mod builder {
     }
     #[derive(Clone, Debug)]
     #[doc = " Events related to ACK processing"]
-    pub struct AckProcessed {
-        pub action: AckActions,
+    pub struct AckProcessed<'a> {
+        pub action: AckAction<'a>,
     }
-    impl IntoEvent<api::AckProcessed> for AckProcessed {
+    impl<'a> IntoEvent<api::AckProcessed<'a>> for AckProcessed<'a> {
         #[inline]
-        fn into_event(self) -> api::AckProcessed {
+        fn into_event(self) -> api::AckProcessed<'a> {
             let AckProcessed { action } = self;
             api::AckProcessed {
                 action: action.into_event(),

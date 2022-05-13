@@ -16,12 +16,11 @@ use s2n_quic_core::{
     counter::{Counter, Saturating},
     event::{
         self,
-        builder::{AckActions, AckProcessed},
+        builder::{AckAction, AckProcessed},
         IntoEvent as _,
     },
     frame::{ack::EcnCounts, Ack, Ping},
     packet::number::{PacketNumber, PacketNumberSpace},
-    path,
     time::{timer, Timer, Timestamp},
     varint::VarInt,
 };
@@ -197,7 +196,7 @@ impl AckManager {
     pub fn on_processed_packet<Pub: event::ConnectionPublisher>(
         &mut self,
         processed_packet: &ProcessedPacket,
-        path_id: path::Id,
+        path: event::builder::Path,
         publisher: &mut Pub,
     ) {
         let packet_number = processed_packet.packet_number;
@@ -225,9 +224,9 @@ impl AckManager {
         // been retransmitted by the peer.
         if self.ack_ranges.insert_packet_number(packet_number).is_err() {
             publisher.on_ack_processed(AckProcessed {
-                action: AckActions::RxInsertionFailed {
+                action: AckAction::RxInsertionFailed {
                     number: packet_number.into_event(),
-                    path_id: path_id.into_event(),
+                    path,
                 },
             });
             return;

@@ -104,9 +104,8 @@ struct Congestion<'a> {
 
 #[event("recovery:ack_processed")]
 /// Events related to ACK processing
-struct AckProcessed {
-    // path: Path<'a>,
-    action: AckActions,
+struct AckProcessed<'a> {
+    action: AckAction<'a>,
 }
 
 #[event("transport:packet_dropped")]
