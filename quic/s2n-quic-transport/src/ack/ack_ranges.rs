@@ -14,8 +14,9 @@ use s2n_quic_core::{
     varint::VarInt,
 };
 
-enum AckRangeError {
-    CurrentPacketDropped,
+#[derive(Debug)]
+pub enum AckRangesError {
+    PacketInsertionFailed,
     LowestPacketDropped {
         min: PacketNumber,
         max: PacketNumber,
@@ -39,7 +40,10 @@ impl AckRanges {
 
     /// Inserts a packet number; dropping smaller values if needed
     #[inline]
-    pub fn insert_packet_number_range(&mut self, pn_range: PacketNumberRange) -> Result<(), ()> {
+    pub fn insert_packet_number_range(
+        &mut self,
+        pn_range: PacketNumberRange,
+    ) -> Result<(), AckRangesError> {
         let interval = (
             Bound::Included(pn_range.start()),
             Bound::Included(pn_range.end()),
@@ -57,20 +61,31 @@ impl AckRanges {
                         insert_res.is_ok(),
                         "min range was removed, so it should be possible to insert another range",
                     );
-                    insert_res.map_err(|_| ())
+                    insert_res.map_err(|_| AckRangesError::PacketInsertionFailed)?;
+
+                    Err(AckRangesError::LowestPacketDropped {
+                        min: min.start,
+                        max: min.end,
+                    })
                 } else {
                     // new value is smaller than min so inset it back in the front
                     let _ = self.0.insert_front(min);
-                    Err(())
+                    Err(AckRangesError::PacketInsertionFailed)
                 }
             }
-            None => Err(()),
+            None => {
+                debug_assert!(false, "IntervalSet should have capacity and entries");
+                Err(AckRangesError::PacketInsertionFailed)
+            }
         }
     }
 
     /// Inserts a packet number; dropping smaller values if needed
     #[inline]
-    pub fn insert_packet_number(&mut self, packet_number: PacketNumber) -> Result<(), ()> {
+    pub fn insert_packet_number(
+        &mut self,
+        packet_number: PacketNumber,
+    ) -> Result<(), AckRangesError> {
         // TODO: post metrics for ack ranges being dropped
         self.insert_packet_number_range(PacketNumberRange::new(packet_number, packet_number))
     }
