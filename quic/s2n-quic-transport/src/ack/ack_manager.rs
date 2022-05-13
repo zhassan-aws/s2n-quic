@@ -376,7 +376,10 @@ impl transmission::interest::Provider for AckManager {
 #[cfg(test)]
 mod tests {
     use super::{super::tests::*, *};
-    use crate::contexts::testing::{MockWriteContext, OutgoingFrameBuffer};
+    use crate::{
+        contexts::testing::{MockWriteContext, OutgoingFrameBuffer},
+        path::{path_event, testing::helper_path_server},
+    };
     use core::{
         iter::{empty, once},
         mem::size_of,
@@ -388,6 +391,7 @@ mod tests {
         event::testing::Publisher,
         frame::{ack_elicitation::AckElicitation, ping, Frame},
         inet::{DatagramInfo, ExplicitCongestionNotification},
+        path,
         time::{Clock, NoopClock},
     };
 
@@ -412,9 +416,11 @@ mod tests {
         assert!(!manager.transmission_state.is_active());
 
         // Trigger:
+        let path = helper_path_server();
+        let path_id = path::Id::test_id();
         manager.on_processed_packet(
             &processed_packet,
-            path::Id::test_id(),
+            path_event!(path, path_id),
             &mut Publisher::snapshot(),
         );
 
@@ -435,9 +441,11 @@ mod tests {
         // Process a packet in an Ect0 datagram
         let pn = PacketNumberSpace::ApplicationData.new_packet_number(VarInt::from_u8(1));
         let datagram = helper_datagram_info(ExplicitCongestionNotification::Ect0);
+        let path = helper_path_server();
+        let path_id = path::Id::test_id();
         manager.on_processed_packet(
             &ProcessedPacket::new(pn, &datagram),
-            path::Id::test_id(),
+            path_event!(path, path_id),
             &mut Publisher::snapshot(),
         );
 
@@ -451,12 +459,12 @@ mod tests {
         let datagram = helper_datagram_info(ExplicitCongestionNotification::Ect1);
         manager.on_processed_packet(
             &ProcessedPacket::new(pn1, &datagram),
-            path::Id::test_id(),
+            path_event!(path, path_id),
             &mut Publisher::snapshot(),
         );
         manager.on_processed_packet(
             &ProcessedPacket::new(pn2, &datagram),
-            path::Id::test_id(),
+            path_event!(path, path_id),
             &mut Publisher::snapshot(),
         );
 
@@ -469,7 +477,7 @@ mod tests {
         let datagram = helper_datagram_info(ExplicitCongestionNotification::Ce);
         manager.on_processed_packet(
             &ProcessedPacket::new(pn, &datagram),
-            path::Id::test_id(),
+            path_event!(path, path_id),
             &mut Publisher::snapshot(),
         );
 
@@ -482,7 +490,7 @@ mod tests {
         let datagram = helper_datagram_info(ExplicitCongestionNotification::NotEct);
         manager.on_processed_packet(
             &ProcessedPacket::new(pn, &datagram),
-            path::Id::test_id(),
+            path_event!(path, path_id),
             &mut Publisher::snapshot(),
         );
 

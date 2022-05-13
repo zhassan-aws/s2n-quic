@@ -591,10 +591,10 @@ impl<Config: endpoint::Config> transmission::interest::Provider for Path<Config>
 pub mod testing {
     use crate::{
         endpoint,
-        path::{path_event, Path, DEFAULT_MAX_MTU},
+        path::{Path, DEFAULT_MAX_MTU},
     };
     use core::time::Duration;
-    use s2n_quic_core::{connection, event, event::IntoEvent as _, path, recovery::RttEstimator};
+    use s2n_quic_core::{connection, recovery::RttEstimator};
 
     pub fn helper_path_server() -> Path<endpoint::testing::Server> {
         Path::new(
@@ -618,12 +618,6 @@ pub mod testing {
             false,
             DEFAULT_MAX_MTU,
         )
-    }
-
-    pub fn helper_path_event() -> event::builder::Path<'static> {
-        let path = helper_path_server();
-        let path_id = path::Id::test_id();
-        path_event!(path, path_id)
     }
 }
 
