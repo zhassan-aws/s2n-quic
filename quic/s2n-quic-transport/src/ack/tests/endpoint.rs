@@ -3,8 +3,8 @@
 
 use super::{generator::gen_ack_settings, Packet, TestEnvironment};
 use crate::{
-    ack::ack_manager::AckManager, contexts::WriteContext, processed_packet::ProcessedPacket,
-    transmission::interest::Provider,
+    ack::ack_manager::AckManager, contexts::WriteContext, path::testing::helper_path_event,
+    processed_packet::ProcessedPacket, transmission::interest::Provider,
 };
 use bolero::generator::*;
 use s2n_quic_core::{
@@ -13,7 +13,6 @@ use s2n_quic_core::{
     frame::{ack_elicitation::AckElicitation, Ack, Frame, Ping},
     inet::DatagramInfo,
     packet::number::PacketNumberSpace,
-    path,
     time::{timer::Provider as _, Timestamp},
 };
 
@@ -73,11 +72,9 @@ impl Endpoint {
             bytes_progressed: 0,
         };
 
-        self.ack_manager.on_processed_packet(
-            &packet,
-            path::Id::test_id(),
-            &mut Publisher::snapshot(),
-        );
+        let path_event = helper_path_event();
+        self.ack_manager
+            .on_processed_packet(&packet, path_event, &mut Publisher::snapshot());
     }
 
     pub fn send(&mut self, now: Timestamp) -> Option<Packet> {
