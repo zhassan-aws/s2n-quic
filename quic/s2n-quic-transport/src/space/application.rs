@@ -774,7 +774,7 @@ impl<Config: endpoint::Config> PacketSpace<Config> for ApplicationSpace<Config> 
                 publisher.on_ack_processed(AckProcessed {
                     action: AckAction::AggregatePending {
                         count: frame.ack_ranges().count() as u16,
-                        path_id: path_id.into_event(),
+                        path: path_event!(path, path_id),
                     },
                 });
                 return Ok(());

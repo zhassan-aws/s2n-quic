@@ -315,7 +315,7 @@ pub mod api {
         RxInsertionFailed { number: u64, path: Path<'a> },
         #[non_exhaustive]
         #[doc = " Acks were aggregated for delayed processing"]
-        AggregatePending { count: u16, path_id: u64 },
+        AggregatePending { count: u16, path: Path<'a> },
         #[non_exhaustive]
         #[doc = " Pending Acks were processed"]
         ProcessPending { count: u16, path_id: u64 },
@@ -2446,7 +2446,7 @@ pub mod builder {
         #[doc = " A received Ack packet was dropped due to space constraint"]
         RxInsertionFailed { number: u64, path: Path<'a> },
         #[doc = " Acks were aggregated for delayed processing"]
-        AggregatePending { count: u16, path_id: u64 },
+        AggregatePending { count: u16, path: Path<'a> },
         #[doc = " Pending Acks were processed"]
         ProcessPending { count: u16, path_id: u64 },
         #[doc = " Acks aggregation failed failed due to space constraint"]
@@ -2461,9 +2461,9 @@ pub mod builder {
                     number: number.into_event(),
                     path: path.into_event(),
                 },
-                Self::AggregatePending { count, path_id } => AggregatePending {
+                Self::AggregatePending { count, path } => AggregatePending {
                     count: count.into_event(),
-                    path_id: path_id.into_event(),
+                    path: path.into_event(),
                 },
                 Self::ProcessPending { count, path_id } => ProcessPending {
                     count: count.into_event(),
