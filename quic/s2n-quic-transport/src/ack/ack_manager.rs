@@ -224,10 +224,10 @@ impl AckManager {
         // been retransmitted by the peer.
         if self.ack_ranges.insert_packet_number(packet_number).is_err() {
             publisher.on_ack_processed(AckProcessed {
-                action: AckAction::RxInsertionFailed {
+                action: AckAction::RxFailed {
                     number: packet_number.into_event(),
-                    path,
                 },
+                path,
             });
             return;
         }

@@ -309,19 +309,28 @@ pub mod api {
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
-    pub enum AckAction<'a> {
+    pub enum AckAction {
         #[non_exhaustive]
-        #[doc = " A received Ack packet was dropped due to space constraint"]
-        RxInsertionFailed { number: u64, path: Path<'a> },
+        #[doc = " A received Ack frame failed insertion due to space constraint"]
+        RxFailed {
+            #[doc = " the packet number which was not inserted"]
+            number: u64,
+        },
         #[non_exhaustive]
         #[doc = " Acks were aggregated for delayed processing"]
-        AggregatePending { count: u16, path: Path<'a> },
+        AggregatePending {
+            #[doc = "  number of packet_numbers aggregated"]
+            count: u16,
+        },
         #[non_exhaustive]
         #[doc = " Pending Acks were processed"]
-        ProcessPending { count: u16, path_id: u64 },
+        ProcessPending {
+            #[doc = "  number of packet_numbers acked"]
+            count: u16,
+        },
         #[non_exhaustive]
-        #[doc = " Acks aggregation failed failed due to space constraint"]
-        AggregationPendingFailed { path_id: u64 },
+        #[doc = " Acks aggregation failed due to space constraint"]
+        AggregationPendingFailed {},
     }
     #[derive(Clone, Debug)]
     #[non_exhaustive]
@@ -546,7 +555,8 @@ pub mod api {
     #[non_exhaustive]
     #[doc = " Events related to ACK processing"]
     pub struct AckProcessed<'a> {
-        pub action: AckAction<'a>,
+        pub action: AckAction,
+        pub path: Path<'a>,
     }
     impl<'a> Event for AckProcessed<'a> {
         const NAME: &'static str = "recovery:ack_processed";
@@ -1461,8 +1471,8 @@ pub mod tracing {
             event: &api::AckProcessed,
         ) {
             let id = context.id();
-            let api::AckProcessed { action } = event;
-            tracing :: event ! (target : "ack_processed" , parent : id , tracing :: Level :: DEBUG , action = tracing :: field :: debug (action));
+            let api::AckProcessed { action, path } = event;
+            tracing :: event ! (target : "ack_processed" , parent : id , tracing :: Level :: DEBUG , action = tracing :: field :: debug (action) , path = tracing :: field :: debug (path));
         }
         #[inline]
         fn on_packet_dropped(
@@ -2442,36 +2452,40 @@ pub mod builder {
         }
     }
     #[derive(Clone, Debug)]
-    pub enum AckAction<'a> {
-        #[doc = " A received Ack packet was dropped due to space constraint"]
-        RxInsertionFailed { number: u64, path: Path<'a> },
+    pub enum AckAction {
+        #[doc = " A received Ack frame failed insertion due to space constraint"]
+        RxFailed {
+            #[doc = " the packet number which was not inserted"]
+            number: u64,
+        },
         #[doc = " Acks were aggregated for delayed processing"]
-        AggregatePending { count: u16, path: Path<'a> },
+        AggregatePending {
+            #[doc = "  number of packet_numbers aggregated"]
+            count: u16,
+        },
         #[doc = " Pending Acks were processed"]
-        ProcessPending { count: u16, path_id: u64 },
-        #[doc = " Acks aggregation failed failed due to space constraint"]
-        AggregationPendingFailed { path_id: u64 },
+        ProcessPending {
+            #[doc = "  number of packet_numbers acked"]
+            count: u16,
+        },
+        #[doc = " Acks aggregation failed due to space constraint"]
+        AggregationPendingFailed,
     }
-    impl<'a> IntoEvent<api::AckAction<'a>> for AckAction<'a> {
+    impl IntoEvent<api::AckAction> for AckAction {
         #[inline]
-        fn into_event(self) -> api::AckAction<'a> {
+        fn into_event(self) -> api::AckAction {
             use api::AckAction::*;
             match self {
-                Self::RxInsertionFailed { number, path } => RxInsertionFailed {
+                Self::RxFailed { number } => RxFailed {
                     number: number.into_event(),
-                    path: path.into_event(),
                 },
-                Self::AggregatePending { count, path } => AggregatePending {
+                Self::AggregatePending { count } => AggregatePending {
                     count: count.into_event(),
-                    path: path.into_event(),
                 },
-                Self::ProcessPending { count, path_id } => ProcessPending {
+                Self::ProcessPending { count } => ProcessPending {
                     count: count.into_event(),
-                    path_id: path_id.into_event(),
                 },
-                Self::AggregationPendingFailed { path_id } => AggregationPendingFailed {
-                    path_id: path_id.into_event(),
-                },
+                Self::AggregationPendingFailed => AggregationPendingFailed {},
             }
         }
     }
@@ -2846,14 +2860,16 @@ pub mod builder {
     #[derive(Clone, Debug)]
     #[doc = " Events related to ACK processing"]
     pub struct AckProcessed<'a> {
-        pub action: AckAction<'a>,
+        pub action: AckAction,
+        pub path: Path<'a>,
     }
     impl<'a> IntoEvent<api::AckProcessed<'a>> for AckProcessed<'a> {
         #[inline]
         fn into_event(self) -> api::AckProcessed<'a> {
-            let AckProcessed { action } = self;
+            let AckProcessed { action, path } = self;
             api::AckProcessed {
                 action: action.into_event(),
+                path: path.into_event(),
             }
         }
     }

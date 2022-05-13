@@ -589,18 +589,21 @@ impl<Config: endpoint::Config> ApplicationSpace<Config> {
             .pending_ack_ranges
             .current_active_path
             .expect("active path should be set");
+
+        let path = &path_manager[current_path_id];
+        publisher.on_ack_processed(AckProcessed {
+            action: AckAction::ProcessPending {
+                count: self.pending_ack_ranges.count() as u16,
+            },
+            path: path_event!(path, current_path_id),
+        });
+
         let (recovery_manager, mut context, pending_ack_ranges) = self.recovery(
             handshake_status,
             local_id_registry,
             current_path_id,
             path_manager,
         );
-        publisher.on_ack_processed(AckProcessed {
-            action: AckAction::ProcessPending {
-                count: pending_ack_ranges.count() as u16,
-                path_id: current_path_id.into_event(),
-            },
-        });
         recovery_manager.on_pending_ack_ranges(
             timestamp,
             pending_ack_ranges,
@@ -774,16 +777,15 @@ impl<Config: endpoint::Config> PacketSpace<Config> for ApplicationSpace<Config> 
                 publisher.on_ack_processed(AckProcessed {
                     action: AckAction::AggregatePending {
                         count: frame.ack_ranges().count() as u16,
-                        path: path_event!(path, path_id),
                     },
+                    path: path_event!(path, path_id),
                 });
                 return Ok(());
             }
 
             publisher.on_ack_processed(AckProcessed {
-                action: AckAction::AggregationPendingFailed {
-                    path_id: path_id.into_event(),
-                },
+                action: AckAction::AggregationPendingFailed,
+                path: path_event!(path, path_id),
             });
 
             // Failed to update aggregate ACK info so drain the pending_ack_ranges and
