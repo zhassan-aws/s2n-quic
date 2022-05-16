@@ -143,3 +143,83 @@ mod tests {
             })
     }
 }
+
+#[cfg(kani)]
+mod kani_checks {
+
+    use super::*;
+
+    fn get_nth<A, T>(a: &[A], idx: usize) -> &T
+    where
+        A: Deref<Target = [T]>,
+    {
+        let mut count = 0;
+
+        for s in a.iter() {
+            if idx - count < s.len() {
+                return &s[idx - count];
+            } else {
+                count += s.len();
+            }
+        }
+        panic!();
+    }
+
+    fn assert_eq_slices<A, B, T>(a: &[A], b: &[B], len: usize)
+    where
+        A: Deref<Target = [T]>,
+        B: Deref<Target = [T]>,
+        T: PartialEq + core::fmt::Debug + std::clone::Clone,
+    {
+        let idx: usize = kani::any();
+        kani::assume(idx < len);
+        let x = get_nth(a, idx);
+        let y = get_nth(b, idx);
+        assert!(x == y);
+    }
+
+    fn check_vectored_copy_gen<T>()
+    where
+        T: PartialEq + core::fmt::Debug + Copy + kani::Arbitrary,
+    {
+        const FROM_MAX_SLICE_LEN: usize = 2;
+        let from_slice1 = kani::slice::any_slice::<T, FROM_MAX_SLICE_LEN>();
+        let from_slice2 = kani::slice::any_slice::<T, FROM_MAX_SLICE_LEN>();
+        let from: [&[T]; 2] = [&from_slice1, &from_slice2];
+
+        const TO_MAX_SLICE_LEN: usize = 2;
+        let mut to_slice1 = kani::slice::any_slice::<T, TO_MAX_SLICE_LEN>();
+        let mut to_slice2 = kani::slice::any_slice::<T, TO_MAX_SLICE_LEN>();
+        let mut to_slice3 = kani::slice::any_slice::<T, TO_MAX_SLICE_LEN>();
+        let mut to: [&mut [T]; 3] = [
+            &mut to_slice1,
+            &mut to_slice2,
+            &mut to_slice3,
+        ];
+
+        let copied = (from[0].len() + from[1].len())
+            .min(to[0].len() + to[1].len() + to[2].len());
+        let copied_len = vectored_copy(&from, &mut to);
+
+        assert!(copied_len == copied);
+        assert_eq_slices(&from, &to, copied_len);
+    }
+
+    #[kani::proof]
+    #[kani::unwind(5)]
+    fn check_vectored_copy_u8() {
+        check_vectored_copy_gen::<u8>();
+    }
+
+    #[kani::proof]
+    #[kani::unwind(5)]
+    fn check_vectored_copy_i16() {
+        check_vectored_copy_gen::<i16>();
+    }
+
+    #[kani::proof]
+    #[kani::unwind(5)]
+    fn check_vectored_copy_usize() {
+        check_vectored_copy_gen::<usize>();
+    }
+}
