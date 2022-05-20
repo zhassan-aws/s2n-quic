@@ -189,11 +189,11 @@ pub struct Connection {
     #[prost(bool, tag = "11")]
     pub unspecified_error: bool,
     #[prost(message, tag = "12")]
-    pub tx: Option<PacketCounts>,
+    pub tx: Option<Counts>,
     #[prost(message, tag = "13")]
-    pub rx: Option<PacketCounts>,
+    pub rx: Option<Counts>,
     #[prost(message, tag = "14")]
-    pub loss: Option<PacketCounts>,
+    pub loss: Option<Counts>,
     #[prost(uint64, tag = "15")]
     pub congestion: u64,
     #[prost(uint64, tag = "16")]
@@ -228,10 +228,17 @@ impl Connection {
             || self.handshake_duration_exceeded_error
             || self.unspecified_error
     }
+
+    pub fn duration(&self) -> Option<core::time::Duration> {
+        self.end_time
+            .unwrap_or_default()
+            .as_duration()
+            .checked_sub(self.start_time.unwrap_or_default().as_duration())
+    }
 }
 
 #[derive(Clone, Copy, Message, PartialEq)]
-pub struct PacketCounts {
+pub struct Counts {
     #[prost(uint64, tag = "1")]
     pub initial: u64,
     #[prost(uint64, tag = "2")]
@@ -240,15 +247,35 @@ pub struct PacketCounts {
     pub retry: u64,
     #[prost(uint64, tag = "4")]
     pub one_rtt: u64,
+    #[prost(uint64, tag = "5")]
+    pub stream_progress: u64,
+    #[prost(uint64, tag = "6")]
+    pub stream_data_blocked: u64,
+    #[prost(uint64, tag = "7")]
+    pub data_blocked: u64,
 }
 
-impl PacketCounts {
+impl Counts {
     #[inline]
-    pub fn inc(&mut self, header: &events::PacketHeader) {
+    pub fn inc_packet(&mut self, header: &events::PacketHeader) {
         match header {
             events::PacketHeader::Initial { .. } => self.initial += 1,
             events::PacketHeader::Handshake { .. } => self.handshake += 1,
             events::PacketHeader::OneRtt { .. } => self.one_rtt += 1,
+            _ => {}
+        }
+    }
+
+    #[inline]
+    pub fn inc_frame(&mut self, frame: &events::Frame) {
+        use events::Frame::*;
+        match frame {
+            DataBlocked { .. } => {
+                self.data_blocked += 1;
+            }
+            StreamDataBlocked { .. } => {
+                self.stream_data_blocked += 1;
+            }
             _ => {}
         }
     }
@@ -303,15 +330,19 @@ pub enum Type {
     Integer,
     Percent,
     Duration,
+    Throughput,
     Bool,
 }
 
 impl Type {
-    pub fn format(&self) -> &'static str {
+    pub fn format(&self, [_min, max]: [f64; 2]) -> &'static str {
+        dbg!(self, _min, max);
         match self {
             Self::Integer => "~s",
             Self::Percent => "~%",
-            Self::Duration => "%M:%S",
+            Self::Duration if max > 2000.0 => "%M:%S",
+            Self::Duration => "%Qms",
+            Self::Throughput => "~s",
             Self::Bool => "c",
         }
     }
@@ -348,6 +379,9 @@ impl Type {
                     Ok(value.parse()?)
                 }
             }
+            Self::Throughput => {
+                todo!()
+            }
             Self::Bool => match value {
                 "true" | "TRUE" | "1" => Ok(1.0),
                 "false" | "FALSE" | "0" => Ok(0.0),
@@ -357,15 +391,11 @@ impl Type {
     }
 }
 
-use Type::{Bool as B, Duration as T, Integer as I, Percent as P};
+use Type::{Bool as B, Duration as T, Integer as I, Percent as P, Throughput as Tpt};
 
 static QUERIES: &[(&str, Type, Q)] = &[
     ("conn.duration", T, |_params, conn, _conns| {
-        let duration = conn
-            .end_time
-            .unwrap_or_default()
-            .as_duration()
-            .checked_sub(conn.start_time.unwrap_or_default().as_duration())?;
+        let duration = conn.duration()?;
         Some(duration.as_secs_f64())
     }),
     ("conn.handshake.confirmed", T, |_params, conn, _conns| {
@@ -421,6 +451,23 @@ static QUERIES: &[(&str, Type, Q)] = &[
     ("conn.tx.one-rtt", I, |_params, conn, _conns| {
         Some(conn.tx.unwrap_or_default().one_rtt as _)
     }),
+    ("conn.tx.data-blocked", I, |_params, conn, _conns| {
+        Some(conn.tx.unwrap_or_default().data_blocked as _)
+    }),
+    ("conn.tx.stream-data-blocked", I, |_params, conn, _conns| {
+        Some(conn.tx.unwrap_or_default().stream_data_blocked as _)
+    }),
+    ("conn.tx.stream-progress", I, |_params, conn, _conns| {
+        Some(conn.tx.unwrap_or_default().stream_progress as _)
+    }),
+    ("conn.tx.stream-throughput", Tpt, |_params, conn, _conns| {
+        let bytes = conn.tx.unwrap_or_default().stream_progress as f64;
+        let duration = conn.duration()?.as_secs_f64();
+        Some(bytes / duration)
+    }),
+    ("conn.rx.packets", I, |_params, conn, _conns| {
+        Some(conn.rx.unwrap_or_default().packets() as _)
+    }),
     ("conn.rx.initial", I, |_params, conn, _conns| {
         Some(conn.rx.unwrap_or_default().initial as _)
     }),
@@ -429,6 +476,20 @@ static QUERIES: &[(&str, Type, Q)] = &[
     }),
     ("conn.rx.one-rtt", I, |_params, conn, _conns| {
         Some(conn.rx.unwrap_or_default().one_rtt as _)
+    }),
+    ("conn.rx.data-blocked", I, |_params, conn, _conns| {
+        Some(conn.rx.unwrap_or_default().data_blocked as _)
+    }),
+    ("conn.rx.stream-data-blocked", I, |_params, conn, _conns| {
+        Some(conn.rx.unwrap_or_default().stream_data_blocked as _)
+    }),
+    ("conn.rx.stream-progress", I, |_params, conn, _conns| {
+        Some(conn.rx.unwrap_or_default().stream_progress as _)
+    }),
+    ("conn.rx.stream-throughput", Tpt, |_params, conn, _conns| {
+        let bytes = conn.rx.unwrap_or_default().stream_progress as f64;
+        let duration = conn.duration()?.as_secs_f64();
+        Some(bytes / duration)
     }),
     ("sim.success", I, |_params, conn, conns| {
         // only return the value for the first connection

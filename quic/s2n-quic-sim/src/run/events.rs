@@ -111,7 +111,7 @@ impl event::Subscriber for Events {
         _meta: &event::ConnectionMeta,
         event: &event::events::PacketSent,
     ) {
-        context.tx.or_default().inc(&event.packet_header);
+        context.tx.or_default().inc_packet(&event.packet_header);
     }
 
     #[inline]
@@ -121,7 +121,7 @@ impl event::Subscriber for Events {
         _meta: &event::ConnectionMeta,
         event: &event::events::PacketReceived,
     ) {
-        context.rx.or_default().inc(&event.packet_header);
+        context.rx.or_default().inc_packet(&event.packet_header);
     }
 
     #[inline]
@@ -131,7 +131,7 @@ impl event::Subscriber for Events {
         _meta: &event::ConnectionMeta,
         event: &event::events::PacketLost,
     ) {
-        context.loss.or_default().inc(&event.packet_header);
+        context.loss.or_default().inc_packet(&event.packet_header);
     }
 
     #[inline]
@@ -171,6 +171,46 @@ impl event::Subscriber for Events {
             }
             _ => {}
         }
+    }
+
+    #[inline]
+    fn on_frame_sent(
+        &mut self,
+        context: &mut Self::ConnectionContext,
+        _meta: &event::ConnectionMeta,
+        event: &event::events::FrameSent,
+    ) {
+        context.tx.or_default().inc_frame(&event.frame);
+    }
+
+    #[inline]
+    fn on_frame_received(
+        &mut self,
+        context: &mut Self::ConnectionContext,
+        _meta: &event::ConnectionMeta,
+        event: &event::events::FrameReceived,
+    ) {
+        context.rx.or_default().inc_frame(&event.frame);
+    }
+
+    #[inline]
+    fn on_rx_stream_progress(
+        &mut self,
+        context: &mut Self::ConnectionContext,
+        _meta: &event::ConnectionMeta,
+        event: &event::events::RxStreamProgress,
+    ) {
+        context.rx.or_default().stream_progress += event.bytes as u64;
+    }
+
+    #[inline]
+    fn on_tx_stream_progress(
+        &mut self,
+        context: &mut Self::ConnectionContext,
+        _meta: &event::ConnectionMeta,
+        event: &event::events::TxStreamProgress,
+    ) {
+        context.tx.or_default().stream_progress += event.bytes as u64;
     }
 
     #[inline]

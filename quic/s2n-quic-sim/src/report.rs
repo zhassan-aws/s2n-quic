@@ -184,6 +184,7 @@ impl Report {
             "width": total_width,
             "height": total_height,
             "padding": 5,
+            "background": "white",
 
             "title": {
                 "text": title,
@@ -296,7 +297,7 @@ impl Report {
                     "scale": "scale$axis_x",
                     "domain": false,
                     "title": self.x.to_string(),
-                    "format": self.x.ty.format(),
+                    "format": self.x.ty.format(x_bounds.domain(self.x.ty)),
                     "formatType": if self.x.ty.is_duration() {
                         "time"
                     } else {
@@ -308,7 +309,7 @@ impl Report {
                     "scale": "scale$axis_x",
                     "domain": false,
                     "title": self.x.to_string(),
-                    "format": self.x.ty.format(),
+                    "format": self.x.ty.format(x_bounds.domain(self.x.ty)),
                     "formatType": if self.x.ty.is_duration() {
                         "time"
                     } else {
@@ -326,7 +327,7 @@ impl Report {
                     "scale": "scale$axis_y",
                     "domain": false,
                     "title": self.y.to_string(),
-                    "format": self.y.ty.format(),
+                    "format": self.y.ty.format(x_bounds.domain(self.y.ty)),
                     "formatType": if self.y.ty.is_duration() {
                         "time"
                     } else {
@@ -344,7 +345,7 @@ impl Report {
                     "scale": "scale$axis_y",
                     "domain": false,
                     "title": self.y.to_string(),
-                    "format": self.y.ty.format(),
+                    "format": self.y.ty.format(x_bounds.domain(self.y.ty)),
                     "formatType": if self.y.ty.is_duration() {
                         "time"
                     } else {

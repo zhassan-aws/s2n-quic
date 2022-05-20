@@ -1,0 +1,20 @@
+[sim]
+connections = "1"
+delay = "5ms..500ms"
+iterations = 10000
+stream_data = 10000000
+
+[report.rx-throughput]
+filters = ["conn.success"]
+x = "net.delay"
+y = "conn.rx.stream-throughput"
+
+[report.tx-throughput]
+filters = ["conn.success"]
+x = "net.delay"
+y = "conn.tx.stream-throughput"
+
+[report.tx-stream-data-blocked]
+filters = ["conn.success"]
+x = "net.delay"
+y = "conn.tx.stream-data-blocked"
