@@ -23,7 +23,7 @@ enum Args {
 fn main() -> Result {
     let format = tracing_subscriber::fmt::format()
         .with_level(false) // don't include levels in formatted output
-        .with_timer(tracing_subscriber::fmt::time::uptime())
+        .with_timer(Uptime)
         .with_ansi(false)
         .compact(); // Use a less verbose output format.
 
@@ -37,5 +37,13 @@ fn main() -> Result {
         Args::Run(args) => args.run(),
         Args::Report(args) => args.run(),
         Args::Batch(args) => args.run(),
+    }
+}
+
+struct Uptime;
+
+impl tracing_subscriber::fmt::time::FormatTime for Uptime {
+    fn format_time(&self, w: &mut tracing_subscriber::fmt::format::Writer<'_>) -> std::fmt::Result {
+        write!(w, "{}", s2n_quic::provider::io::testing::now())
     }
 }
