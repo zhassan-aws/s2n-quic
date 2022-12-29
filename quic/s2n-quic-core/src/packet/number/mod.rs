@@ -234,3 +234,65 @@ fn decode_packet_number(
 
     PacketNumber::from_varint(candidate_pn, space)
 }
+
+use s2n_codec::{
+    DecoderBuffer, DecoderError, Encoder, EncoderBuffer,
+};
+
+pub type Error = DecoderError;
+
+#[cfg_attr(kani, kani::proof, kani::unwind(5))]
+fn kani_round_trip() {
+    let space = PacketNumberSpace::Initial;
+    let x: u32 = kani::any();
+    let packet_number = space.new_packet_number(VarInt::from_u32(x));
+    if let Some((mask, bytes)) =
+        encode_packet_number(packet_number)
+    {
+        dpn(mask, bytes, packet_number).unwrap();
+    }
+}
+
+fn encode_packet_number(
+    packet_number: PacketNumber,
+) -> Option<(u8, Vec<u8>)> {
+    let space = packet_number.space();
+    let pn = packet_number.as_u64().checked_sub(packet_number.as_u64()).unwrap();
+    let truncated_packet_number = PacketNumberLen::from_varint(VarInt::new(pn).unwrap(), space).unwrap().truncate_packet_number(PacketNumber::as_varint(packet_number));
+
+    let bytes = encode(&truncated_packet_number);
+    let mask = truncated_packet_number.len().into_packet_tag_mask();
+
+    Some((mask, bytes))
+}
+
+fn dpn(
+    packet_tag: u8,
+    packet_bytes: Vec<u8>,
+    largest_acked_packet_number: PacketNumber,
+) -> Result<(), String> {
+    // decode the packet number len from the packet tag
+    let packet_number_len = largest_acked_packet_number
+        .space()
+        .new_packet_number_len(packet_tag);
+
+    // try decoding the truncated packet number from the packet bytes
+    let (truncated_packet_number, _) = packet_number_len
+        .decode_truncated_packet_number(DecoderBuffer::new(&packet_bytes))
+        .map_err(|_err| String::from("A"))?;
+
+    // make sure the encoding matches the original bytes
+    //assert_eq!(packet_bytes, encode(&truncated_packet_number).unwrap());
+    //let x = packet_bytes;
+    let x = packet_bytes;
+    let y = encode(&truncated_packet_number);
+    assert!(x == y);
+
+    Ok(())
+}
+
+pub fn encode(expected_value: &TruncatedPacketNumber) -> Vec<u8> {
+    let mut buffer = vec![0; 1];
+    EncoderBuffer::new(&mut buffer).encode(expected_value);
+    buffer
+}

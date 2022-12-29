@@ -31,6 +31,35 @@ fn round_trip() {
         });
 }
 
+//#[cfg_attr(kani, kani::proof, kani::unwind(5))]
+//fn kani_round_trip() {
+//    let space = match kani::any() {
+//        0 => PacketNumberSpace::Initial,
+//        1 => PacketNumberSpace::Handshake,
+//        _ => PacketNumberSpace::ApplicationData,
+//    };
+//    let y = kani::any();
+//    let x = kani::any();
+//    let packet_number =
+//        space.new_packet_number(match VarInt::new(x) {
+//            Ok(packet_number) => packet_number,
+//            Err(_) => VarInt::from_u32(x as u32),
+//        });
+//    let largest_acked_packet_number =
+//        space.new_packet_number(match VarInt::new(y) {
+//            Ok(packet_number) => packet_number,
+//            Err(_) => VarInt::from_u32(y as u32),
+//        });
+//    if let Some((mask, bytes)) =
+//        encode_packet_number(packet_number, largest_acked_packet_number)
+//    {
+//        // If encoding was valid, assert that the information can be decoded
+//        let actual_packet_number =
+//            decode_packet_number(mask, bytes, largest_acked_packet_number).unwrap();
+//        assert_eq!(actual_packet_number, packet_number);
+//    }
+//}
+
 fn gen_packet_number_space() -> impl ValueGenerator<Output = PacketNumberSpace> {
     (0u8..=2).map_gen(|id| match id {
         0 => PacketNumberSpace::Initial,
